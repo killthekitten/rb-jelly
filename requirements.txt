@@ -1,0 +1,4 @@
+pyrekordbox>=0.4.0
+smbprotocol>=1.12.0
+python-dotenv>=1.0.0
+pathlib2>=2.3.0; python_version<'3.4'
