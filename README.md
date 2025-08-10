@@ -9,7 +9,7 @@ A Python script that mirrors your Rekordbox DJ playlist structure as `.m3u` file
 
 ## ⚠️ Disclaimer
 
-This codebase is 100% generated with Claude Code to scratch my own itch and has not been properly tested or reviewed. The SMB sync functionality doesn't quite work properly. You are expected to:
+This codebase is 100% generated with Claude Code to scratch my own itch and has not been properly tested or reviewed. The SMB sync functionality doesn't quite work properly. You are expected to move the playlists manually according to the steps below.
 
 1. Generate the playlists using this tool
 2. Manually upload the generated M3U files to your Jellyfin server's Library folder under `playlists/`
@@ -39,25 +39,21 @@ Edit `.env` with your specific settings:
 
 **Rekordbox Configuration:**
 
-- `REKORDBOX_DB_PATH`: Path to your Rekordbox master.db file
-- `REKORDBOX_XML_PATH`: Path to your exported XML file (alternative to database)
-- **Database Location**: Usually found at:
+- `REKORDBOX_DB_PATH`: Path to your Rekordbox master.db file, usually found here:
   - macOS: `~/Library/Pioneer/rekordbox/master.db`
   - Windows: `%APPDATA%\\Pioneer\\rekordbox\\master.db`
 
 **Path Configuration:**
 
 - `CRATES_ROOT`: Your music Crates directory (where Rekordbox tracks are stored)
-- `OUTPUT_DIR`: Where to create the Jellyfin playlist files (default: `./output`)
 - `JELLYFIN_ROOT`: The root path that Jellyfin uses to access music on your NAS (default: `/data/music`)
 
 **Other Settings:**
 
+- `OUTPUT_DIR`: Where to create the Jellyfin playlist files (default: `./output`)
 - `LOG_LEVEL`: Logging verbosity (DEBUG, INFO, WARNING, ERROR - default: INFO)
 
 ## Usage
-
-### Basic Usage
 
 For the list of available commands see this:
 
@@ -65,8 +61,35 @@ For the list of available commands see this:
 python cli.py 
 ```
 
-The only command that I have fully tested and confirmed working is this:
+### 1. Generate the playlists
+
+This command would generate a flat playlist structure in the folder that you specified as `OUTPUT_DIR` (by default it is `./output`):
 
 ```bash
 python cli.py create-playlists --flat
 ```
+
+The `--flat` flag is optional, but it makes the experience with Jellyfin a little bit better. It would change the playlist names to include all the parent folder names, so the related playlists will appear sorted in the Jellyfin UI as you would expect them to.
+
+### 2. Upload playlists to your Jellyfin instance
+
+Inside of the folder that you assigned to your music library on Jellyfin, you need to create a subdirectory `playlists` and upload all the playlists there. 
+
+
+In my case I run Jellyfin on an Unraid NAS, and the library is mapped to `/cache/Music`. Here is how it looks like in the NAS UI:
+
+<img width="880" height="705" alt="Screenshot of the Unraid file manager interface that lists the playlists in Jellyfin's folder" src="https://github.com/user-attachments/assets/c48c464d-ecda-4dab-bf6f-5866d113c1bd" />
+
+### 3. Refresh metadata
+
+You need to locate the library on Jellyfin's homepage, click on the icon in the bottom-right corner, and select "Refresh metadata":
+
+<img width="851" height="632" alt="A screenshot of Jellyfin's interface with a highlighted refresh metadata menu" src="https://github.com/user-attachments/assets/786774c2-da0d-4d7e-b6b7-5b4f8005128b" />
+
+Then in the popup select "Scan for new and updated files" and confirm:
+
+<img width="965" height="632" alt="A screenshot of the refresh metadata popup. The selected option in the dropdown says 'Scan for new and updated files'." src="https://github.com/user-attachments/assets/6c4caa88-9c82-4cc6-9ecd-7813e9123ff5" />
+
+It will take a few moments, and if it all went well, when you go into the Playlists tab of your library, you will see your playlists:
+
+<img width="1513" height="694" alt="A screenshot of Jellyfin's Playlists tab" src="https://github.com/user-attachments/assets/28085b61-934a-4305-865d-9bc1b1b69774" />
