@@ -1,6 +1,6 @@
 # rb-jelly
 
-A Python script that uses [pyrekordbox](https://github.com/dylanljones/pyrekordbox) to export your Rekordbox DJ playlist structure as `.m3u` files. It is intended to be used with Jellyfin and other audio players, and works similarly to [rekordbox-plexamp-sync](https://github.com/dvcrn/rekordbox-plexamp-sync). Here's what it can do so far:
+A Python script that uses [pyrekordbox](https://github.com/dylanljones/pyrekordbox) to export your Rekordbox DJ playlists as `.m3u` files. It is intended to be used with Jellyfin and other audio players, and works similarly to [rekordbox-plexamp-sync](https://github.com/dvcrn/rekordbox-plexamp-sync). Here's what it can do so far:
 
 - Read the Rekordbox 6/7 database directly. You do not need to open Rekordbox for this to work.
 - Generate the `.m3u` playlists with respect to folder structure in your Rekordbox.
