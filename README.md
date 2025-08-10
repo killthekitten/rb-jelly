@@ -1,27 +1,21 @@
 # rb-jelly
 
-A Python script that mirrors your Rekordbox DJ playlist structure as `.m3u` files to be used with Jellyfin and other audio players. Currently, the following features are confirmed working:
+A Python script that uses [pyrekordbox](https://github.com/dylanljones/pyrekordbox) to export your Rekordbox DJ playlist structure as `.m3u` files. It is intended to be used with Jellyfin and other audio players, and works similarly to [rekordbox-plexamp-sync](https://github.com/dvcrn/rekordbox-plexamp-sync). Currently, the following features are confirmed working:
 
-- Reading the Rekordbox 6/7 database without the need to export the XML.
-- Smart playlist extraction.
-- Supports flat and nested `.m3u` playlist output (no audio players I know currently support nested playlists except for Apple Music).
+- It can read the Rekordbox 6/7 database directly. You do not need to open Rekordbox for this to work.
+- The `.m3u` playlists are generated with respect to the nested folder you set up in Rekordbox.
+- It can recognize and export smart playlists, thanks to [pyrekordbox](https://github.com/dylanljones/pyrekordbox) 🙇.
 - Substitutes the absolute path in the playlist from your local folder (`CRATES_ROOT`) to the Jellyfin library folder (`JELLYFIN_ROOT`).
 
 ## ⚠️ Disclaimer
 
-This codebase is 100% generated with Claude Code to scratch my own itch and has not been properly tested or reviewed. The SMB sync functionality doesn't quite work properly. You are expected to move the playlists manually according to the steps below.
-
-1. Generate the playlists using this tool
-2. Manually upload the generated M3U files to your Jellyfin server's Library folder under `playlists/`
-3. Resync metadata on that library in Jellyfin
-
-Use at your own risk and always backup your data before running any operations.
+This code has not been properly tested or reviewed, use at your own risk and always backup your data before running any operations. You should know that all of it, including the test suite, was generated with Claude Code without much supervision. I wanted to scratch my own itch, and that worked wonders, but your mileage can vary. Having said that, I'd be happy to help you out should you have any problems, just open an issue and let me know! 
 
 **P.S.** Since this codebase is AI-generated, any musical references found in the code do not represent my personal musical taste and will be replaced with more tasteful alternatives when I have more time ¯\\\_(ツ)\_/¯
 
 ## Installation
 
-1. Clone or download this repository
+1. Clone or download this repository.
 2. Install dependencies:
    ```bash
    pip install -r requirements.txt
@@ -75,21 +69,20 @@ The `--flat` flag is optional, but it makes the experience with Jellyfin a littl
 
 Inside of the folder that you assigned to your music library on Jellyfin, you need to create a subdirectory `playlists` and upload all the playlists there. 
 
-
 In my case I run Jellyfin on an Unraid NAS, and the library is mapped to `/cache/Music`. Here is how it looks like in the NAS UI:
 
-<img width="880" height="705" alt="Screenshot of the Unraid file manager interface that lists the playlists in Jellyfin's folder" src="https://github.com/user-attachments/assets/c48c464d-ecda-4dab-bf6f-5866d113c1bd" />
+<img width="800" alt="Screenshot of the Unraid file manager interface that lists the playlists in Jellyfin's folder" src="https://github.com/user-attachments/assets/c48c464d-ecda-4dab-bf6f-5866d113c1bd" />
 
 ### 3. Refresh metadata
 
 You need to locate the library on Jellyfin's homepage, click on the icon in the bottom-right corner, and select "Refresh metadata":
 
-<img width="851" height="632" alt="A screenshot of Jellyfin's interface with a highlighted refresh metadata menu" src="https://github.com/user-attachments/assets/786774c2-da0d-4d7e-b6b7-5b4f8005128b" />
+<img width="800" alt="A screenshot of Jellyfin's interface with a highlighted refresh metadata menu" src="https://github.com/user-attachments/assets/786774c2-da0d-4d7e-b6b7-5b4f8005128b" />
 
 Then in the popup select "Scan for new and updated files" and confirm:
 
-<img width="965" height="632" alt="A screenshot of the refresh metadata popup. The selected option in the dropdown says 'Scan for new and updated files'." src="https://github.com/user-attachments/assets/6c4caa88-9c82-4cc6-9ecd-7813e9123ff5" />
+<img width="800" alt="A screenshot of the refresh metadata popup. The selected option in the dropdown says 'Scan for new and updated files'." src="https://github.com/user-attachments/assets/6c4caa88-9c82-4cc6-9ecd-7813e9123ff5" />
 
 It will take a few moments, and if it all went well, when you go into the Playlists tab of your library, you will see your playlists:
 
-<img width="1513" height="694" alt="A screenshot of Jellyfin's Playlists tab" src="https://github.com/user-attachments/assets/28085b61-934a-4305-865d-9bc1b1b69774" />
+<img width="800" alt="A screenshot of Jellyfin's Playlists tab" src="https://github.com/user-attachments/assets/28085b61-934a-4305-865d-9bc1b1b69774" />
