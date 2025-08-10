@@ -172,6 +172,9 @@ class TestRekordboxExtractor:
         # Mock empty playlist
         mock_playlist = Mock()
         mock_playlist.Name = "Empty Playlist"
+        mock_playlist.ID = "1"
+        mock_playlist.ParentID = "root"
+        mock_playlist.Attribute = 0
         mock_playlist.Songs = []  # No songs
         
         mock_db.get_playlist.return_value = [mock_playlist]
@@ -189,6 +192,9 @@ class TestRekordboxExtractor:
         
         mock_playlist = Mock()
         mock_playlist.Name = "Test Playlist"
+        mock_playlist.ID = "1"
+        mock_playlist.ParentID = "root"
+        mock_playlist.Attribute = 0
         
         # Mock song with missing content
         mock_song_no_content = Mock()
@@ -200,8 +206,8 @@ class TestRekordboxExtractor:
         mock_content.Title = "Valid Song"
         mock_content.Artist = Mock()
         mock_content.Artist.Name = "Valid Artist"
-        mock_content.FolderPath = "/path/to/folder"
-        mock_content.Filename = "song.mp3"
+        mock_content.FolderPath = "/path/to/folder/song.mp3"
+        mock_content.FileNameL = "song.mp3"
         mock_song_with_content.Content = mock_content
         
         mock_playlist.Songs = [mock_song_no_content, mock_song_with_content]

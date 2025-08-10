@@ -17,7 +17,7 @@ class MockRekordboxContent:
     
     def __init__(self, title: str, artist_name: str, folder_path: str, filename: str):
         self.Title = title
-        self.Filename = filename 
+        self.FileNameL = filename  # Use correct attribute name from pyrekordbox 
         self.FolderPath = folder_path
         
         # Mock Artist object
@@ -35,9 +35,12 @@ class MockRekordboxSong:
 class MockRekordboxPlaylist:
     """Mock for Rekordbox Playlist object."""
     
-    def __init__(self, name: str, songs: List[MockRekordboxSong]):
+    def __init__(self, name: str, songs: List[MockRekordboxSong], playlist_id: str = "1", parent_id: str = "root", attribute: int = 0):
         self.Name = name
         self.Songs = songs
+        self.ID = playlist_id
+        self.ParentID = parent_id
+        self.Attribute = attribute  # 0 = playlist with tracks, 1/4 = folder
 
 
 @pytest.fixture
@@ -53,35 +56,35 @@ def realistic_rekordbox_db():
     strobe_content = MockRekordboxContent(
         title="Strobe", 
         artist_name="deadmau5",
-        folder_path="/Users/djuser/Music/Crates/Progressive House/deadmau5",
+        folder_path="/Users/djuser/Music/Crates/Progressive House/deadmau5/01 - Strobe.mp3",
         filename="01 - Strobe.mp3"
     )
     
     one_more_time_content = MockRekordboxContent(
         title="One More Time",
         artist_name="Daft Punk", 
-        folder_path="/Users/djuser/Music/Crates/French House/Daft Punk",
+        folder_path="/Users/djuser/Music/Crates/French House/Daft Punk/One More Time.wav",
         filename="One More Time.wav"
     )
     
     levels_content = MockRekordboxContent(
         title="Levels",
         artist_name="Avicii",
-        folder_path="/Users/djuser/Music/Crates/Progressive House/Avicii",
+        folder_path="/Users/djuser/Music/Crates/Progressive House/Avicii/Levels (Original Version).flac",
         filename="Levels (Original Version).flac"
     )
     
     still_dre_content = MockRekordboxContent(
         title="Still D.R.E.",
         artist_name="Dr. Dre ft. Snoop Dogg",
-        folder_path="/Users/djuser/Music/Crates/West Coast Hip Hop/Dr. Dre",
+        folder_path="/Users/djuser/Music/Crates/West Coast Hip Hop/Dr. Dre/02 Still D.R.E..mp3",
         filename="02 Still D.R.E..mp3"
     )
     
     lose_yourself_content = MockRekordboxContent(
         title="Lose Yourself", 
         artist_name="Eminem",
-        folder_path="/Users/djuser/Music/Crates/Hip Hop/Eminem",
+        folder_path="/Users/djuser/Music/Crates/Hip Hop/Eminem/Lose Yourself.m4a",
         filename="Lose Yourself.m4a"
     )
     
@@ -100,24 +103,36 @@ def realistic_rekordbox_db():
     # Create playlists with realistic groupings
     electronic_playlist = MockRekordboxPlaylist(
         name="Electronic Essentials",
-        songs=[strobe_song, one_more_time_song, levels_song, orphaned_song1]
+        songs=[strobe_song, one_more_time_song, levels_song, orphaned_song1],
+        playlist_id="1",
+        parent_id="root",
+        attribute=0  # Actual playlist with tracks
     )
     
     hip_hop_playlist = MockRekordboxPlaylist(
         name="Hip Hop Classics", 
-        songs=[still_dre_song, lose_yourself_song, orphaned_song2]
+        songs=[still_dre_song, lose_yourself_song, orphaned_song2],
+        playlist_id="2",
+        parent_id="root",
+        attribute=0  # Actual playlist with tracks
     )
     
     # Empty playlist (should be ignored)
     empty_playlist = MockRekordboxPlaylist(
         name="Empty Playlist",
-        songs=[]
+        songs=[],
+        playlist_id="3",
+        parent_id="root",
+        attribute=0  # Actual playlist with tracks
     )
     
     # Playlist with only orphaned songs (should be ignored)
     orphaned_playlist = MockRekordboxPlaylist(
         name="Orphaned Only",
-        songs=[orphaned_song1, orphaned_song2]
+        songs=[orphaned_song1, orphaned_song2],
+        playlist_id="4",
+        parent_id="root",
+        attribute=0  # Actual playlist with tracks
     )
     
     # Create mock database

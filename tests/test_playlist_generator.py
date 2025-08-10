@@ -81,7 +81,7 @@ class TestPlaylistGenerator:
         # Check that M3U file was created
         m3u_file = playlist_dir / "Electronic.m3u"
         assert m3u_file.exists()
-        assert "Electronic" in created_playlists
+        assert "Electronic/Electronic" in created_playlists
         
         # Check M3U file content
         content = m3u_file.read_text(encoding='utf-8')
@@ -127,9 +127,9 @@ class TestPlaylistGenerator:
         created_playlists = generator.create_playlist_structure(playlists, path_converter)
         
         # Playlist should still be created with only valid tracks
-        assert "Mixed" in created_playlists
+        assert "Mixed/Mixed" in created_playlists
         
-        m3u_file = Path(created_playlists["Mixed"])
+        m3u_file = Path(created_playlists["Mixed/Mixed"])
         content = m3u_file.read_text(encoding='utf-8')
         
         # Should contain valid track
