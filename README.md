@@ -1,15 +1,19 @@
 # rb-jelly
 
-A Python script that uses [pyrekordbox](https://github.com/dylanljones/pyrekordbox) to export your Rekordbox DJ playlist structure as `.m3u` files. It is intended to be used with Jellyfin and other audio players, and works similarly to [rekordbox-plexamp-sync](https://github.com/dvcrn/rekordbox-plexamp-sync). Currently, the following features are confirmed working:
+A Python script that uses [pyrekordbox](https://github.com/dylanljones/pyrekordbox) to export your Rekordbox DJ playlist structure as `.m3u` files. It is intended to be used with Jellyfin and other audio players, and works similarly to [rekordbox-plexamp-sync](https://github.com/dvcrn/rekordbox-plexamp-sync). Here's what it can do so far:
 
-- It can read the Rekordbox 6/7 database directly. You do not need to open Rekordbox for this to work.
-- The `.m3u` playlists are generated with respect to the nested folder you set up in Rekordbox.
-- It can recognize and export smart playlists, thanks to [pyrekordbox](https://github.com/dylanljones/pyrekordbox) 🙇.
-- Substitutes the absolute path in the playlist from your local folder (`CRATES_ROOT`) to the Jellyfin library folder (`JELLYFIN_ROOT`).
+- Read the Rekordbox 6/7 database directly. You do not need to open Rekordbox for this to work.
+- Generate the `.m3u` playlists with respect to folder structure in your Rekordbox.
+- Recognize and export smart playlists, thanks to [pyrekordbox](https://github.com/dylanljones/pyrekordbox) 🙇.
+- Substitute the absolute path in the playlist from your local folder (`CRATES_ROOT`) to the Jellyfin library folder (`JELLYFIN_ROOT`).
+
+Using this tool still involves quite a bit of manual work, but the end goal is to automate the process as much as possible.
 
 ## ⚠️ Disclaimer
 
-This code has not been properly tested or reviewed, use at your own risk and always backup your data before running any operations. You should know that all of it, including the test suite, was generated with Claude Code without much supervision. I wanted to scratch my own itch, and that worked wonders, but your mileage can vary. Having said that, I'd be happy to help you out should you have any problems, just open an issue and let me know! 
+This code has not been properly tested or reviewed, use at your own risk and always backup your data before running any operations. You should know that all of it, including the test suite, was generated with Claude Code without much supervision. 
+
+I wanted to scratch my own itch, and that worked wonders, but your mileage can vary. Having said that, I'd be happy to help you out should you have any problems, just open an issue and let me know! 
 
 **P.S.** Since this codebase is AI-generated, any musical references found in the code do not represent my personal musical taste and will be replaced with more tasteful alternatives when I have more time ¯\\\_(ツ)\_/¯
 
