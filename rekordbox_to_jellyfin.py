@@ -22,6 +22,8 @@ except ImportError:
     exit(1)
 
 try:
+    # Note: Rekordbox6Database works with both Rekordbox 6 and 7
+    # as they share the same SQLite database structure
     from pyrekordbox import Rekordbox6Database, RekordboxXml
 except ImportError:
     print("Error: pyrekordbox not installed. Run: pip install pyrekordbox")
@@ -43,30 +45,30 @@ except ImportError:
 
 class UniqueNameResolver:
     """Handles collision resolution for sanitized filenames."""
-    
+
     def __init__(self):
         self.name_mapping = {}  # original_name -> unique_sanitized_name
         self.used_names = set()  # track all used sanitized names
-    
+
     def get_unique_name(self, original_name: str) -> str:
         """Get a unique sanitized filename, resolving collisions."""
         # Return cached mapping if we've seen this name before
         if original_name in self.name_mapping:
             return self.name_mapping[original_name]
-        
+
         # Start with basic sanitization
         base_sanitized = sanitize_filename(original_name)
-        
+
         # Handle empty results from sanitization
         if not base_sanitized or base_sanitized.isspace():
             base_sanitized = f"playlist_{hash(original_name) % 10000}"
-        
+
         # If no collision, use it directly
         if base_sanitized not in self.used_names:
             self.name_mapping[original_name] = base_sanitized
             self.used_names.add(base_sanitized)
             return base_sanitized
-        
+
         # Handle collision by finding a unique suffix
         counter = 1
         while True:
@@ -146,34 +148,53 @@ class RekordboxExtractor:
             return []
 
     def _extract_from_database(self) -> List[Playlist]:
-        """Extract playlists from Rekordbox 6 database with nested structure."""
+        """Extract playlists from Rekordbox 6/7 database with nested structure."""
         try:
-            rb_playlists = list(self.db.get_playlist())
+            # Get all playlists and filter out deleted ones
+            all_playlists = list(self.db.get_playlist())
+            rb_playlists = [p for p in all_playlists if not getattr(p, 'rb_local_deleted', False)]
+            deleted_playlists_count = len(all_playlists) - len(rb_playlists)
             
+            self.logger.info(f"Found {len(all_playlists)} total playlists, {deleted_playlists_count} deleted (skipped)")
+            if deleted_playlists_count > 0:
+                self.logger.debug(f"Skipped deleted playlists: {[p.Name for p in all_playlists if getattr(p, 'rb_local_deleted', False)]}")
+            print(len(rb_playlists))
+
             # Build hierarchy map and name resolvers
             playlists_by_id = {}
             name_resolvers = {}  # path -> UniqueNameResolver for that path level
-            
+
             def get_name_resolver(path: str) -> UniqueNameResolver:
                 """Get or create a name resolver for a specific path level."""
                 if path not in name_resolvers:
                     name_resolvers[path] = UniqueNameResolver()
                 return name_resolvers[path]
+
+            # Track deletion statistics
+            total_deleted_tracks = 0
             
             # First pass: create all playlist objects with temporary names
             for rb_playlist in rb_playlists:
                 tracks = []
-                
+                playlist_deleted_tracks = 0
+
                 # Extract tracks from playlist (only for actual playlists, not folders)
                 # Attribute 0 = actual playlist with tracks
                 # Attribute 1 or 4 = folders/containers
-                if hasattr(rb_playlist, 'Attribute') and rb_playlist.Attribute == 0:
+                if hasattr(rb_playlist, "Attribute") and rb_playlist.Attribute == 0:
                     for song in rb_playlist.Songs:
                         if hasattr(song, "Content") and song.Content:
                             content = song.Content
+                            # Skip deleted tracks
+                            if getattr(content, 'rb_local_deleted', False):
+                                playlist_deleted_tracks += 1
+                                continue
+                            
                             track = Track(
                                 title=content.Title or "Unknown",
-                                artist=content.Artist.Name if content.Artist else "Unknown",
+                                artist=(
+                                    content.Artist.Name if content.Artist else "Unknown"
+                                ),
                                 file_path=(
                                     Path(content.FolderPath)
                                     if content.FolderPath
@@ -183,21 +204,25 @@ class RekordboxExtractor:
                             )
                             tracks.append(track)
                 
+                total_deleted_tracks += playlist_deleted_tracks
+                if playlist_deleted_tracks > 0:
+                    self.logger.debug(f"Playlist '{rb_playlist.Name}': skipped {playlist_deleted_tracks} deleted tracks")
+
                 playlist = Playlist(
                     name=rb_playlist.Name,  # Keep original name for now
                     path="",  # Will be calculated later
                     tracks=tracks,
                     children=[],
                 )
-                
+
                 playlists_by_id[rb_playlist.ID] = {
-                    'playlist': playlist,
-                    'parent_id': rb_playlist.ParentID,
-                    'is_folder': rb_playlist.Attribute in (1, 4),
-                    'original_name': rb_playlist.Name,
-                    'rb_playlist': rb_playlist
+                    "playlist": playlist,
+                    "parent_id": rb_playlist.ParentID,
+                    "is_folder": rb_playlist.Attribute in (1, 4),
+                    "original_name": rb_playlist.Name,
+                    "rb_playlist": rb_playlist,
                 }
-            
+
             # Second pass: calculate paths with proper parent context
             def calculate_path_info(playlist_id, visited=None):
                 if visited is None:
@@ -205,52 +230,60 @@ class RekordboxExtractor:
                 if playlist_id in visited:
                     return [], ""  # Circular reference protection
                 visited.add(playlist_id)
-                
+
                 if playlist_id not in playlists_by_id:
                     return [], ""
-                
+
                 playlist_data = playlists_by_id[playlist_id]
-                parent_id = playlist_data['parent_id']
-                original_name = playlist_data['original_name']
-                
+                parent_id = playlist_data["parent_id"]
+                original_name = playlist_data["original_name"]
+
                 if parent_id == "root":
                     # Root level - use root resolver
                     resolver = get_name_resolver("root")
                     unique_name = resolver.get_unique_name(original_name)
                     return [unique_name], "root"
                 else:
-                    parent_path_components, parent_context = calculate_path_info(parent_id, visited.copy())
+                    parent_path_components, _ = calculate_path_info(
+                        parent_id, visited.copy()
+                    )
                     parent_path = "/".join(parent_path_components)
-                    
+
                     # Get resolver for this parent path
                     resolver = get_name_resolver(parent_path)
                     unique_name = resolver.get_unique_name(original_name)
-                    
+
                     return parent_path_components + [unique_name], parent_path
-            
+
             # Calculate unique names and paths for all playlists
             result_playlists = []
-            
+
             for playlist_id, playlist_data in playlists_by_id.items():
-                playlist = playlist_data['playlist']
-                is_folder = playlist_data['is_folder']
-                
+                playlist = playlist_data["playlist"]
+                is_folder = playlist_data["is_folder"]
+
                 # Only include actual playlists (not folders) that have tracks
                 if not is_folder and playlist.tracks:
                     path_components, _ = calculate_path_info(playlist_id)
-                    
+
                     # Update playlist name to unique sanitized version
-                    playlist.name = path_components[-1]  # Last component is the playlist name
-                    
+                    playlist.name = path_components[
+                        -1
+                    ]  # Last component is the playlist name
+
                     # Build the folder path (excluding the playlist name itself)
                     if len(path_components) > 1:
                         folder_path = "/".join(path_components[:-1])
                         playlist.path = folder_path
                     else:
                         playlist.path = ""  # Root level playlist
-                    
+
                     result_playlists.append(playlist)
-            
+
+            # Log deletion statistics
+            if total_deleted_tracks > 0:
+                self.logger.info(f"Skipped {total_deleted_tracks} deleted tracks from database playlists")
+
             return result_playlists
 
         except Exception as e:
@@ -263,15 +296,28 @@ class RekordboxExtractor:
 
         try:
             # Get all playlists from XML
-            xml_playlists = self.xml.get_playlists()
+            all_xml_playlists = self.xml.get_playlists()
+            deleted_playlists_count = 0
+            total_deleted_tracks = 0
 
-            for xml_playlist in xml_playlists:
+            for xml_playlist in all_xml_playlists:
+                # Skip deleted playlists
+                if getattr(xml_playlist, 'rb_local_deleted', False):
+                    deleted_playlists_count += 1
+                    continue
+                
                 tracks = []
                 track_keys = xml_playlist.get_tracks()
+                playlist_deleted_tracks = 0
 
                 for track_key in track_keys:
                     track_data = self.xml.get_track(track_key)
                     if track_data and hasattr(track_data, "Location"):
+                        # Skip deleted tracks
+                        if getattr(track_data, 'rb_local_deleted', False):
+                            playlist_deleted_tracks += 1
+                            continue
+                        
                         track = Track(
                             title=getattr(track_data, "Name", "Unknown"),
                             artist=getattr(track_data, "Artist", "Unknown"),
@@ -284,6 +330,10 @@ class RekordboxExtractor:
                         )
                         tracks.append(track)
 
+                total_deleted_tracks += playlist_deleted_tracks
+                if playlist_deleted_tracks > 0:
+                    self.logger.debug(f"Playlist '{xml_playlist.Name}': skipped {playlist_deleted_tracks} deleted tracks")
+
                 if tracks:
                     playlist = Playlist(
                         name=xml_playlist.Name,
@@ -292,6 +342,11 @@ class RekordboxExtractor:
                         children=[],
                     )
                     playlists.append(playlist)
+
+            # Log deletion statistics
+            self.logger.info(f"Found {len(all_xml_playlists)} total playlists, {deleted_playlists_count} deleted (skipped)")
+            if total_deleted_tracks > 0:
+                self.logger.info(f"Skipped {total_deleted_tracks} deleted tracks from XML playlists")
 
         except Exception as e:
             self.logger.error(f"Error extracting from XML: {e}")
@@ -356,7 +411,7 @@ class PlaylistGenerator:
     ) -> Dict[str, str]:
         """Create nested folder structure and M3U files for playlists."""
         created_playlists = {}
-        
+
         # Initialize collision resolver for flat mode
         if self.flat_mode:
             name_resolver = UniqueNameResolver()
@@ -372,7 +427,7 @@ class PlaylistGenerator:
                 else:
                     # Root level playlist
                     flat_name_raw = playlist.name
-                
+
                 # Apply collision resolution and sanitization
                 flat_name = name_resolver.get_unique_name(flat_name_raw)
                 m3u_path = self.output_dir / f"{flat_name}.m3u"
@@ -478,7 +533,7 @@ class SMBSyncManager:
     def _file_exists_on_nas(self, smb_path: str) -> bool:
         """Check if file exists on NAS via SMB."""
         try:
-            with smbclient.open_file(smb_path, mode="rb") as f:
+            with smbclient.open_file(smb_path, mode="rb"):
                 return True
         except Exception:
             return False

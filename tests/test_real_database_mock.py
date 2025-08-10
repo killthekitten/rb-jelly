@@ -19,6 +19,7 @@ class MockRekordboxContent:
         self.Title = title
         self.FileNameL = filename  # Use correct attribute name from pyrekordbox 
         self.FolderPath = folder_path
+        self.rb_local_deleted = False
         
         # Mock Artist object
         self.Artist = Mock()
@@ -41,6 +42,7 @@ class MockRekordboxPlaylist:
         self.ID = playlist_id
         self.ParentID = parent_id
         self.Attribute = attribute  # 0 = playlist with tracks, 1/4 = folder
+        self.rb_local_deleted = False
 
 
 @pytest.fixture
@@ -155,41 +157,59 @@ def realistic_xml_structure():
     # Mock playlist structure
     mock_playlist1 = Mock()
     mock_playlist1.Name = "Summer Vibes 2023"
+    mock_playlist1.rb_local_deleted = False
     mock_playlist1.get_tracks.return_value = ["TRACK001", "TRACK002", "TRACK003"]
     
     mock_playlist2 = Mock()
     mock_playlist2.Name = "Workout Mix"
+    mock_playlist2.rb_local_deleted = False
     mock_playlist2.get_tracks.return_value = ["TRACK004", "TRACK005"]
     
     mock_xml.get_playlists.return_value = [mock_playlist1, mock_playlist2]
     
     # Mock track data with file:// URLs (common in Rekordbox XML)
+    
+    track001 = Mock(
+        Name="Miami 2 Ibiza",
+        Artist="Swedish House Mafia",
+        Location="file://localhost/Users/djuser/Music/Crates/Progressive%20House/Swedish%20House%20Mafia/Miami%202%20Ibiza.mp3",
+        rb_local_deleted=False
+    )
+    
+    track002 = Mock(
+        Name="Titanium", 
+        Artist="David Guetta ft. Sia",
+        Location="file://localhost/Users/djuser/Music/Crates/Electro%20House/David%20Guetta/Titanium.wav",
+        rb_local_deleted=False
+    )
+    
+    track003 = Mock(
+        Name="Animals",
+        Artist="Martin Garrix", 
+        Location="file://localhost/Users/djuser/Music/Crates/Big%20Room/Martin%20Garrix/Animals.flac",
+        rb_local_deleted=False
+    )
+    
+    track004 = Mock(
+        Name="Pump It",
+        Artist="The Black Eyed Peas",
+        Location="file://localhost/Users/djuser/Music/Crates/Hip%20Hop/Black%20Eyed%20Peas/Pump%20It.mp3",
+        rb_local_deleted=False
+    )
+    
+    track005 = Mock(
+        Name="Till I Collapse", 
+        Artist="Eminem",
+        Location="file://localhost/Users/djuser/Music/Crates/Hip%20Hop/Eminem/Till%20I%20Collapse.m4a",
+        rb_local_deleted=False
+    )
+    
     track_data = {
-        "TRACK001": Mock(
-            Name="Miami 2 Ibiza",
-            Artist="Swedish House Mafia",
-            Location="file://localhost/Users/djuser/Music/Crates/Progressive%20House/Swedish%20House%20Mafia/Miami%202%20Ibiza.mp3"
-        ),
-        "TRACK002": Mock(
-            Name="Titanium", 
-            Artist="David Guetta ft. Sia",
-            Location="file://localhost/Users/djuser/Music/Crates/Electro%20House/David%20Guetta/Titanium.wav"
-        ),
-        "TRACK003": Mock(
-            Name="Animals",
-            Artist="Martin Garrix", 
-            Location="file://localhost/Users/djuser/Music/Crates/Big%20Room/Martin%20Garrix/Animals.flac"
-        ),
-        "TRACK004": Mock(
-            Name="Pump It",
-            Artist="The Black Eyed Peas",
-            Location="file://localhost/Users/djuser/Music/Crates/Hip%20Hop/Black%20Eyed%20Peas/Pump%20It.mp3"
-        ),
-        "TRACK005": Mock(
-            Name="Till I Collapse", 
-            Artist="Eminem",
-            Location="file://localhost/Users/djuser/Music/Crates/Hip%20Hop/Eminem/Till%20I%20Collapse.m4a"
-        )
+        "TRACK001": track001,
+        "TRACK002": track002,
+        "TRACK003": track003,
+        "TRACK004": track004,
+        "TRACK005": track005
     }
     
     def get_track_side_effect(track_key):

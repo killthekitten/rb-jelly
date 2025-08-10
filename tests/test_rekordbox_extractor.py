@@ -134,6 +134,7 @@ class TestRekordboxExtractor:
         # Mock XML playlists
         mock_xml_playlist = Mock()
         mock_xml_playlist.Name = "Test Playlist"
+        mock_xml_playlist.rb_local_deleted = False
         mock_xml_playlist.get_tracks.return_value = ["track1", "track2"]
         
         mock_xml.get_playlists.return_value = [mock_xml_playlist]
@@ -143,11 +144,13 @@ class TestRekordboxExtractor:
         mock_track_data1.Name = "Track 1"
         mock_track_data1.Artist = "Artist 1"
         mock_track_data1.Location = "/path/to/track1.mp3"
+        mock_track_data1.rb_local_deleted = False
         
         mock_track_data2 = Mock()
         mock_track_data2.Name = "Track 2"
         mock_track_data2.Artist = "Artist 2"
         mock_track_data2.Location = "/path/to/track2.mp3"
+        mock_track_data2.rb_local_deleted = False
         
         mock_xml.get_track.side_effect = [mock_track_data1, mock_track_data2]
         
@@ -195,6 +198,7 @@ class TestRekordboxExtractor:
         mock_playlist.ID = "1"
         mock_playlist.ParentID = "root"
         mock_playlist.Attribute = 0
+        mock_playlist.rb_local_deleted = False
         
         # Mock song with missing content
         mock_song_no_content = Mock()
@@ -208,6 +212,7 @@ class TestRekordboxExtractor:
         mock_content.Artist.Name = "Valid Artist"
         mock_content.FolderPath = "/path/to/folder/song.mp3"
         mock_content.FileNameL = "song.mp3"
+        mock_content.rb_local_deleted = False
         mock_song_with_content.Content = mock_content
         
         mock_playlist.Songs = [mock_song_no_content, mock_song_with_content]

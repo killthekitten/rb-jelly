@@ -71,6 +71,7 @@ def mock_rekordbox_db():
     mock_playlist1.ID = "1"
     mock_playlist1.ParentID = "root"
     mock_playlist1.Attribute = 0  # 0 = actual playlist with tracks
+    mock_playlist1.rb_local_deleted = False
     
     # Mock songs in playlist
     mock_song1 = Mock()
@@ -80,6 +81,7 @@ def mock_rekordbox_db():
     mock_content1.Artist.Name = "Deadmau5"
     mock_content1.FolderPath = "/Users/djuser/Music/Crates/Electronic/Deadmau5/Strobe.mp3"
     mock_content1.FileNameL = "Strobe.mp3"  # Use correct attribute name
+    mock_content1.rb_local_deleted = False
     mock_song1.Content = mock_content1
     
     mock_song2 = Mock()
@@ -89,6 +91,7 @@ def mock_rekordbox_db():
     mock_content2.Artist.Name = "Daft Punk"
     mock_content2.FolderPath = "/Users/djuser/Music/Crates/Electronic/Daft Punk/One More Time.wav"
     mock_content2.FileNameL = "One More Time.wav"  # Use correct attribute name
+    mock_content2.rb_local_deleted = False
     mock_song2.Content = mock_content2
     
     mock_playlist1.Songs = [mock_song1, mock_song2]
@@ -99,6 +102,7 @@ def mock_rekordbox_db():
     mock_playlist2.ID = "2"
     mock_playlist2.ParentID = "root"
     mock_playlist2.Attribute = 0  # 0 = actual playlist with tracks
+    mock_playlist2.rb_local_deleted = False
     
     mock_song3 = Mock() 
     mock_content3 = Mock()
@@ -107,6 +111,7 @@ def mock_rekordbox_db():
     mock_content3.Artist.Name = "Dr. Dre"
     mock_content3.FolderPath = "/Users/djuser/Music/Crates/Hip Hop/Dr. Dre/Still D.R.E..flac"
     mock_content3.FileNameL = "Still D.R.E..flac"  # Use correct attribute name
+    mock_content3.rb_local_deleted = False
     mock_song3.Content = mock_content3
     
     mock_playlist2.Songs = [mock_song3]
