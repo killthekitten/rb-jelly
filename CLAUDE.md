@@ -26,6 +26,11 @@ tail -f rekordbox_to_jellyfin.log
 python -m pytest
 python -m pytest -v  # verbose output
 python -m pytest tests/test_collision_resolution.py -v  # specific test file
+
+# Code formatting and linting
+black *.py tests/  # Format code with black
+isort *.py tests/  # Sort imports with isort
+flake8 *.py tests/  # Check for linting issues with flake8
 ```
 
 ## Architecture

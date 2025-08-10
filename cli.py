@@ -6,12 +6,12 @@ A command-line interface for migrating Rekordbox playlists to Jellyfin
 and optionally syncing files to a NAS.
 """
 
-import click
 import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+
+import click
 
 try:
     from dotenv import load_dotenv
@@ -27,9 +27,9 @@ except ImportError:
 # Import our existing modules
 try:
     from rekordbox_to_jellyfin import (
-        RekordboxExtractor,
         PathConverter,
         PlaylistGenerator,
+        RekordboxExtractor,
         SMBSyncManager,
         setup_logging,
     )
@@ -114,7 +114,9 @@ def cli(ctx, verbose, quiet):
     "--dry-run", is_flag=True, help="Show what would be done without creating files"
 )
 @click.option(
-    "--flat", is_flag=True, help="Generate flat playlist structure (Jellyfin compatible)"
+    "--flat",
+    is_flag=True,
+    help="Generate flat playlist structure (Jellyfin compatible)",
 )
 @click.pass_context
 def create_playlists(ctx, output_dir, dry_run, flat):
@@ -127,7 +129,7 @@ def create_playlists(ctx, output_dir, dry_run, flat):
     if output_dir:
         config["OUTPUT_DIR"] = output_dir
 
-    logger = logging.getLogger(__name__)
+    logging.getLogger(__name__)
 
     if dry_run:
         click.echo(
@@ -139,8 +141,9 @@ def create_playlists(ctx, output_dir, dry_run, flat):
     if flat:
         click.echo(
             click.style(
-                "📁 FLAT MODE - Playlists will be flattened for Jellyfin compatibility", 
-                fg="cyan", bold=True
+                "📁 FLAT MODE - Playlists will be flattened for Jellyfin compatibility",
+                fg="cyan",
+                bold=True,
             )
         )
 
@@ -252,7 +255,7 @@ def sync_files(ctx, check_only):
         )
         sys.exit(1)
 
-    logger = logging.getLogger(__name__)
+    logging.getLogger(__name__)
 
     if check_only:
         click.echo(
@@ -349,7 +352,9 @@ def sync_files(ctx, check_only):
 )
 @click.option("--skip-sync", is_flag=True, help="Skip file synchronization")
 @click.option(
-    "--flat", is_flag=True, help="Generate flat playlist structure (Jellyfin compatible)"
+    "--flat",
+    is_flag=True,
+    help="Generate flat playlist structure (Jellyfin compatible)",
 )
 @click.pass_context
 def full_migration(ctx, output_dir, skip_sync, flat):

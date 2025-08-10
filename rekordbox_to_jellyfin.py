@@ -10,10 +10,9 @@ and syncs missing files to NAS via SMB.
 import logging
 import os
 import shutil
-from pathlib import Path, PurePath
-from typing import List, Dict, Optional, Tuple, Set
 from dataclasses import dataclass
-from collections import defaultdict
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 try:
     from dotenv import load_dotenv
@@ -31,7 +30,6 @@ except ImportError:
 
 try:
     import smbclient
-    from smbprotocol.connection import Connection
 except ImportError:
     print("Error: smbprotocol not installed. Run: pip install smbprotocol")
     exit(1)
@@ -152,12 +150,18 @@ class RekordboxExtractor:
         try:
             # Get all playlists and filter out deleted ones
             all_playlists = list(self.db.get_playlist())
-            rb_playlists = [p for p in all_playlists if not getattr(p, 'rb_local_deleted', False)]
+            rb_playlists = [
+                p for p in all_playlists if not getattr(p, "rb_local_deleted", False)
+            ]
             deleted_playlists_count = len(all_playlists) - len(rb_playlists)
-            
-            self.logger.info(f"Found {len(all_playlists)} total playlists, {deleted_playlists_count} deleted (skipped)")
+
+            self.logger.info(
+                f"Found {len(all_playlists)} total playlists, {deleted_playlists_count} deleted (skipped)"
+            )
             if deleted_playlists_count > 0:
-                self.logger.debug(f"Skipped deleted playlists: {[p.Name for p in all_playlists if getattr(p, 'rb_local_deleted', False)]}")
+                self.logger.debug(
+                    f"Skipped deleted playlists: {[p.Name for p in all_playlists if getattr(p, 'rb_local_deleted', False)]}"
+                )
             print(len(rb_playlists))
 
             # Build hierarchy map and name resolvers
@@ -172,7 +176,7 @@ class RekordboxExtractor:
 
             # Track deletion statistics
             total_deleted_tracks = 0
-            
+
             # First pass: create all playlist objects with temporary names
             for rb_playlist in rb_playlists:
                 tracks = []
@@ -186,10 +190,10 @@ class RekordboxExtractor:
                         if hasattr(song, "Content") and song.Content:
                             content = song.Content
                             # Skip deleted tracks
-                            if getattr(content, 'rb_local_deleted', False):
+                            if getattr(content, "rb_local_deleted", False):
                                 playlist_deleted_tracks += 1
                                 continue
-                            
+
                             track = Track(
                                 title=content.Title or "Unknown",
                                 artist=(
@@ -203,10 +207,12 @@ class RekordboxExtractor:
                                 playlist_path=rb_playlist.Name,
                             )
                             tracks.append(track)
-                
+
                 total_deleted_tracks += playlist_deleted_tracks
                 if playlist_deleted_tracks > 0:
-                    self.logger.debug(f"Playlist '{rb_playlist.Name}': skipped {playlist_deleted_tracks} deleted tracks")
+                    self.logger.debug(
+                        f"Playlist '{rb_playlist.Name}': skipped {playlist_deleted_tracks} deleted tracks"
+                    )
 
                 playlist = Playlist(
                     name=rb_playlist.Name,  # Keep original name for now
@@ -282,7 +288,9 @@ class RekordboxExtractor:
 
             # Log deletion statistics
             if total_deleted_tracks > 0:
-                self.logger.info(f"Skipped {total_deleted_tracks} deleted tracks from database playlists")
+                self.logger.info(
+                    f"Skipped {total_deleted_tracks} deleted tracks from database playlists"
+                )
 
             return result_playlists
 
@@ -302,10 +310,10 @@ class RekordboxExtractor:
 
             for xml_playlist in all_xml_playlists:
                 # Skip deleted playlists
-                if getattr(xml_playlist, 'rb_local_deleted', False):
+                if getattr(xml_playlist, "rb_local_deleted", False):
                     deleted_playlists_count += 1
                     continue
-                
+
                 tracks = []
                 track_keys = xml_playlist.get_tracks()
                 playlist_deleted_tracks = 0
@@ -314,10 +322,10 @@ class RekordboxExtractor:
                     track_data = self.xml.get_track(track_key)
                     if track_data and hasattr(track_data, "Location"):
                         # Skip deleted tracks
-                        if getattr(track_data, 'rb_local_deleted', False):
+                        if getattr(track_data, "rb_local_deleted", False):
                             playlist_deleted_tracks += 1
                             continue
-                        
+
                         track = Track(
                             title=getattr(track_data, "Name", "Unknown"),
                             artist=getattr(track_data, "Artist", "Unknown"),
@@ -332,7 +340,9 @@ class RekordboxExtractor:
 
                 total_deleted_tracks += playlist_deleted_tracks
                 if playlist_deleted_tracks > 0:
-                    self.logger.debug(f"Playlist '{xml_playlist.Name}': skipped {playlist_deleted_tracks} deleted tracks")
+                    self.logger.debug(
+                        f"Playlist '{xml_playlist.Name}': skipped {playlist_deleted_tracks} deleted tracks"
+                    )
 
                 if tracks:
                     playlist = Playlist(
@@ -344,9 +354,13 @@ class RekordboxExtractor:
                     playlists.append(playlist)
 
             # Log deletion statistics
-            self.logger.info(f"Found {len(all_xml_playlists)} total playlists, {deleted_playlists_count} deleted (skipped)")
+            self.logger.info(
+                f"Found {len(all_xml_playlists)} total playlists, {deleted_playlists_count} deleted (skipped)"
+            )
             if total_deleted_tracks > 0:
-                self.logger.info(f"Skipped {total_deleted_tracks} deleted tracks from XML playlists")
+                self.logger.info(
+                    f"Skipped {total_deleted_tracks} deleted tracks from XML playlists"
+                )
 
         except Exception as e:
             self.logger.error(f"Error extracting from XML: {e}")
