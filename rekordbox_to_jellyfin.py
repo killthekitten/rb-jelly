@@ -21,8 +21,6 @@ except ImportError:
     exit(1)
 
 try:
-    # Note: Rekordbox6Database works with both Rekordbox 6 and 7
-    # as they share the same SQLite database structure
     from pyrekordbox import Rekordbox6Database, RekordboxXml
     from pyrekordbox.db6.smartlist import SmartList
 except ImportError:
@@ -147,7 +145,6 @@ class RekordboxExtractor:
             return []
 
     def _extract_from_database(self) -> List[Playlist]:
-        """Extract playlists from Rekordbox 6/7 database with nested structure."""
         try:
             # Get all playlists and filter out deleted ones
             all_playlists = list(self.db.get_playlist())
