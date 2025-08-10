@@ -204,6 +204,7 @@ class TestRekordboxExtractor:
         mock_playlist.ID = "1"
         mock_playlist.ParentID = "root"
         mock_playlist.Attribute = 0
+        mock_playlist.configure_mock(is_smart_playlist=False)
         mock_playlist.rb_local_deleted = False
 
         # Mock song with missing content
@@ -251,3 +252,273 @@ class TestRekordboxExtractor:
         playlists = extractor.extract_playlists()
 
         assert len(playlists) == 0
+
+    @patch("rekordbox_to_jellyfin.SmartList")
+    def test_extract_smart_playlists(self, mock_smartlist_class):
+        """Test extracting smart playlists with XML parsing."""
+        extractor = RekordboxExtractor(db_path="/fake/path.db")
+
+        mock_db = Mock()
+        extractor.db = mock_db
+
+        # Mock smart playlist
+        mock_smart_playlist = Mock()
+        mock_smart_playlist.Name = "Bass: Halfstep"
+        mock_smart_playlist.ID = "smart1"
+        mock_smart_playlist.ParentID = "root"
+        mock_smart_playlist.Attribute = 4  # Smart playlists have Attribute=4
+        # Ensure is_smart_playlist is properly set up for hasattr() check
+        mock_smart_playlist.configure_mock(is_smart_playlist=True)
+        mock_smart_playlist.SmartList = '<NODE Id="123" LogicalOperator="1"><CONDITION PropertyName="genre" Operator="1" ValueLeft="Halfstep"/></NODE>'
+        mock_smart_playlist.rb_local_deleted = False
+
+        # Mock regular playlist for comparison
+        mock_regular_playlist = Mock()
+        mock_regular_playlist.Name = "Regular Playlist"
+        mock_regular_playlist.ID = "reg1"
+        mock_regular_playlist.ParentID = "root"
+        mock_regular_playlist.Attribute = 0
+        mock_regular_playlist.configure_mock(is_smart_playlist=False)
+        mock_regular_playlist.Songs = []  # Empty regular playlist
+        mock_regular_playlist.rb_local_deleted = False
+
+        mock_db.get_playlist.return_value = [mock_smart_playlist, mock_regular_playlist]
+
+        # Mock SmartList parsing and execution
+        mock_smartlist_instance = Mock()
+        mock_smartlist_class.return_value = mock_smartlist_instance
+
+        # Mock database session and query results
+        mock_session = Mock()
+        mock_db.session = mock_session
+
+        # Mock smart playlist track results
+        mock_track_content = Mock()
+        mock_track_content.Title = "Bass Track"
+        mock_track_content.Artist = Mock()
+        mock_track_content.Artist.Name = "Bass Artist"
+        mock_track_content.FolderPath = "/path/to/bass/track.mp3"
+        mock_track_content.rb_local_deleted = False
+
+        # Mock the SQLAlchemy query chain
+        mock_query = Mock()
+        mock_query.all.return_value = [mock_track_content]
+        mock_session.query.return_value.filter.return_value = mock_query
+
+        # Mock filter clause generation
+        mock_filter_clause = Mock()
+        mock_smartlist_instance.filter_clause.return_value = mock_filter_clause
+
+        playlists = extractor.extract_playlists()
+
+        # Verify SmartList was parsed
+        mock_smartlist_instance.parse.assert_called_once_with(
+            mock_smart_playlist.SmartList
+        )
+
+        # Should return both playlists (smart playlist now has tracks, regular is empty but included)
+        assert len(playlists) == 2
+
+        # Find the smart playlist (name gets sanitized from "Bass: Halfstep" to "Bass Halfstep")
+        smart_playlist = next(p for p in playlists if p.name.endswith("Halfstep"))
+        assert smart_playlist.name == "Bass Halfstep"
+        assert len(smart_playlist.tracks) == 1
+
+        # Verify smart playlist track
+        track = smart_playlist.tracks[0]
+        assert track.title == "Bass Track"
+        assert track.artist == "Bass Artist"
+        assert track.file_path == Path("/path/to/bass/track.mp3")
+
+    @patch("rekordbox_to_jellyfin.SmartList")
+    def test_extract_smart_playlist_with_parsing_error(self, mock_smartlist_class):
+        """Test smart playlist extraction handles parsing errors gracefully."""
+        extractor = RekordboxExtractor(db_path="/fake/path.db")
+
+        mock_db = Mock()
+        extractor.db = mock_db
+
+        # Mock smart playlist with invalid XML
+        mock_smart_playlist = Mock()
+        mock_smart_playlist.Name = "Broken Smart Playlist"
+        mock_smart_playlist.ID = "broken1"
+        mock_smart_playlist.ParentID = "root"
+        mock_smart_playlist.Attribute = 4
+        mock_smart_playlist.configure_mock(is_smart_playlist=True)
+        mock_smart_playlist.SmartList = "invalid xml"
+        mock_smart_playlist.rb_local_deleted = False
+
+        mock_db.get_playlist.return_value = [mock_smart_playlist]
+
+        # Mock SmartList parsing to raise exception
+        mock_smartlist_instance = Mock()
+        mock_smartlist_class.return_value = mock_smartlist_instance
+        mock_smartlist_instance.parse.side_effect = Exception("XML parsing failed")
+
+        # Mock database session
+        mock_db.session = Mock()
+
+        playlists = extractor.extract_playlists()
+
+        # Should return playlist but with no tracks due to parsing error
+        assert len(playlists) == 1
+        playlist = playlists[0]
+        assert playlist.name == "Broken Smart Playlist"
+        assert len(playlist.tracks) == 0
+
+    @patch("rekordbox_to_jellyfin.SmartList")
+    def test_extract_smart_playlist_with_no_smartlist_data(self, mock_smartlist_class):
+        """Test smart playlist extraction when SmartList is None or empty."""
+        extractor = RekordboxExtractor(db_path="/fake/path.db")
+
+        mock_db = Mock()
+        extractor.db = mock_db
+
+        # Mock smart playlist with no SmartList data
+        mock_smart_playlist = Mock()
+        mock_smart_playlist.Name = "Empty Smart Playlist"
+        mock_smart_playlist.ID = "empty1"
+        mock_smart_playlist.ParentID = "root"
+        mock_smart_playlist.Attribute = 4
+        mock_smart_playlist.configure_mock(is_smart_playlist=True)
+        mock_smart_playlist.SmartList = None  # No smart list data
+        mock_smart_playlist.rb_local_deleted = False
+
+        mock_db.get_playlist.return_value = [mock_smart_playlist]
+        mock_db.session = Mock()
+
+        playlists = extractor.extract_playlists()
+
+        # Should return playlist but with no tracks
+        assert len(playlists) == 1
+        playlist = playlists[0]
+        assert playlist.name == "Empty Smart Playlist"
+        assert len(playlist.tracks) == 0
+
+        # SmartList should not be instantiated
+        mock_smartlist_class.assert_not_called()
+
+    @patch("rekordbox_to_jellyfin.SmartList")
+    def test_extract_mixed_regular_and_smart_playlists(self, mock_smartlist_class):
+        """Test extracting a mix of regular and smart playlists."""
+        extractor = RekordboxExtractor(db_path="/fake/path.db")
+
+        mock_db = Mock()
+        extractor.db = mock_db
+
+        # Mock regular playlist with tracks
+        mock_regular_playlist = Mock()
+        mock_regular_playlist.Name = "Regular Playlist"
+        mock_regular_playlist.ID = "reg1"
+        mock_regular_playlist.ParentID = "root"
+        mock_regular_playlist.Attribute = 0
+        mock_regular_playlist.configure_mock(is_smart_playlist=False)
+
+        # Mock regular playlist song
+        mock_song = Mock()
+        mock_content = Mock()
+        mock_content.Title = "Regular Song"
+        mock_content.Artist = Mock()
+        mock_content.Artist.Name = "Regular Artist"
+        mock_content.FolderPath = "/path/to/regular/song.mp3"
+        mock_content.rb_local_deleted = False
+        mock_song.Content = mock_content
+        mock_regular_playlist.Songs = [mock_song]
+        mock_regular_playlist.rb_local_deleted = False
+
+        # Mock smart playlist
+        mock_smart_playlist = Mock()
+        mock_smart_playlist.Name = "Smart Playlist"
+        mock_smart_playlist.ID = "smart1"
+        mock_smart_playlist.ParentID = "root"
+        mock_smart_playlist.Attribute = 4
+        mock_smart_playlist.configure_mock(is_smart_playlist=True)
+        mock_smart_playlist.SmartList = (
+            '<NODE><CONDITION PropertyName="bpm" Operator="2" ValueLeft="140"/></NODE>'
+        )
+        mock_smart_playlist.rb_local_deleted = False
+
+        mock_db.get_playlist.return_value = [mock_regular_playlist, mock_smart_playlist]
+
+        # Mock SmartList execution
+        mock_smartlist_instance = Mock()
+        mock_smartlist_class.return_value = mock_smartlist_instance
+
+        mock_session = Mock()
+        mock_db.session = mock_session
+
+        # Mock smart playlist results
+        mock_smart_content = Mock()
+        mock_smart_content.Title = "Smart Song"
+        mock_smart_content.Artist = Mock()
+        mock_smart_content.Artist.Name = "Smart Artist"
+        mock_smart_content.FolderPath = "/path/to/smart/song.mp3"
+        mock_smart_content.rb_local_deleted = False
+
+        mock_query = Mock()
+        mock_query.all.return_value = [mock_smart_content]
+        mock_session.query.return_value.filter.return_value = mock_query
+
+        playlists = extractor.extract_playlists()
+
+        assert len(playlists) == 2
+
+        # Find regular playlist
+        regular_playlist = next(p for p in playlists if p.name == "Regular Playlist")
+        assert len(regular_playlist.tracks) == 1
+        assert regular_playlist.tracks[0].title == "Regular Song"
+
+        # Find smart playlist
+        smart_playlist = next(p for p in playlists if p.name == "Smart Playlist")
+        assert len(smart_playlist.tracks) == 1
+        assert smart_playlist.tracks[0].title == "Smart Song"
+
+    def test_extract_smart_playlist_skips_deleted_tracks(self):
+        """Test smart playlist extraction skips deleted tracks."""
+        extractor = RekordboxExtractor(db_path="/fake/path.db")
+
+        mock_db = Mock()
+        extractor.db = mock_db
+
+        with patch("rekordbox_to_jellyfin.SmartList") as mock_smartlist_class:
+            # Mock smart playlist
+            mock_smart_playlist = Mock()
+            mock_smart_playlist.Name = "Smart with Deleted"
+            mock_smart_playlist.ID = "smart_del"
+            mock_smart_playlist.ParentID = "root"
+            mock_smart_playlist.Attribute = 4
+            mock_smart_playlist.configure_mock(is_smart_playlist=True)
+            mock_smart_playlist.SmartList = "<NODE><CONDITION/></NODE>"
+            mock_smart_playlist.rb_local_deleted = False
+
+            mock_db.get_playlist.return_value = [mock_smart_playlist]
+
+            # Mock SmartList
+            mock_smartlist_instance = Mock()
+            mock_smartlist_class.return_value = mock_smartlist_instance
+
+            mock_session = Mock()
+            mock_db.session = mock_session
+
+            # Mock tracks - one deleted, one valid
+            mock_deleted_track = Mock()
+            mock_deleted_track.rb_local_deleted = True
+            mock_deleted_track.Title = "Deleted Song"
+
+            mock_valid_track = Mock()
+            mock_valid_track.rb_local_deleted = False
+            mock_valid_track.Title = "Valid Song"
+            mock_valid_track.Artist = Mock()
+            mock_valid_track.Artist.Name = "Valid Artist"
+            mock_valid_track.FolderPath = "/path/to/valid.mp3"
+
+            mock_query = Mock()
+            mock_query.all.return_value = [mock_deleted_track, mock_valid_track]
+            mock_session.query.return_value.filter.return_value = mock_query
+
+            playlists = extractor.extract_playlists()
+
+            assert len(playlists) == 1
+            playlist = playlists[0]
+            assert len(playlist.tracks) == 1  # Only valid track
+            assert playlist.tracks[0].title == "Valid Song"

@@ -24,6 +24,7 @@ try:
     # Note: Rekordbox6Database works with both Rekordbox 6 and 7
     # as they share the same SQLite database structure
     from pyrekordbox import Rekordbox6Database, RekordboxXml
+    from pyrekordbox.db6.smartlist import SmartList
 except ImportError:
     print("Error: pyrekordbox not installed. Run: pip install pyrekordbox")
     exit(1)
@@ -162,7 +163,6 @@ class RekordboxExtractor:
                 self.logger.debug(
                     f"Skipped deleted playlists: {[p.Name for p in all_playlists if getattr(p, 'rb_local_deleted', False)]}"
                 )
-            print(len(rb_playlists))
 
             # Build hierarchy map and name resolvers
             playlists_by_id = {}
@@ -182,31 +182,163 @@ class RekordboxExtractor:
                 tracks = []
                 playlist_deleted_tracks = 0
 
-                # Extract tracks from playlist (only for actual playlists, not folders)
+                # Debug logging for ALL playlists to understand structure
+                is_smart = (
+                    hasattr(rb_playlist, "is_smart_playlist")
+                    and rb_playlist.is_smart_playlist
+                )
+                attribute = getattr(rb_playlist, "Attribute", "Unknown")
+                self.logger.debug(
+                    f"Playlist '{rb_playlist.Name}': is_smart_playlist={is_smart}, "
+                    f"Attribute={attribute}"
+                )
+
+                # Extract tracks from playlist
                 # Attribute 0 = actual playlist with tracks
                 # Attribute 1 or 4 = folders/containers
-                if hasattr(rb_playlist, "Attribute") and rb_playlist.Attribute == 0:
-                    for song in rb_playlist.Songs:
-                        if hasattr(song, "Content") and song.Content:
-                            content = song.Content
-                            # Skip deleted tracks
-                            if getattr(content, "rb_local_deleted", False):
-                                playlist_deleted_tracks += 1
-                                continue
+                # Smart playlists can have Attribute=4 but still need track processing
+                should_process_tracks = hasattr(rb_playlist, "Attribute") and (
+                    rb_playlist.Attribute == 0 or is_smart
+                )
 
-                            track = Track(
-                                title=content.Title or "Unknown",
-                                artist=(
-                                    content.Artist.Name if content.Artist else "Unknown"
-                                ),
-                                file_path=(
-                                    Path(content.FolderPath)
-                                    if content.FolderPath
-                                    else Path()
-                                ),
-                                playlist_path=rb_playlist.Name,
+                if should_process_tracks:
+
+                    if is_smart:
+                        # Handle smart playlists by executing their SmartList query
+                        self.logger.debug(
+                            f"Processing smart playlist '{rb_playlist.Name}'"
+                        )
+                        try:
+                            if (
+                                hasattr(rb_playlist, "SmartList")
+                                and rb_playlist.SmartList
+                            ):
+                                self.logger.debug(
+                                    f"SmartList type for '{rb_playlist.Name}': {type(rb_playlist.SmartList)}"
+                                )
+                                self.logger.debug(
+                                    f"SmartList content: {rb_playlist.SmartList}"
+                                )
+
+                                # The SmartList might be a string representation, need to parse it
+                                if isinstance(rb_playlist.SmartList, str):
+                                    self.logger.debug(
+                                        f"Parsing SmartList XML for '{rb_playlist.Name}'"
+                                    )
+                                    try:
+                                        # Parse the XML string into a SmartList object
+                                        smart_list = SmartList()
+                                        smart_list.parse(rb_playlist.SmartList)
+
+                                        # Query tracks using the smart list filter
+                                        from pyrekordbox.db6.tables import DjmdContent
+
+                                        filter_clause = smart_list.filter_clause()
+                                        smart_tracks_query = self.db.session.query(
+                                            DjmdContent
+                                        ).filter(filter_clause)
+                                        smart_tracks_list = smart_tracks_query.all()
+                                        self.logger.debug(
+                                            f"Smart playlist '{rb_playlist.Name}' returned {len(smart_tracks_list)} tracks"
+                                        )
+
+                                        for content in smart_tracks_list:
+                                            # Skip deleted tracks
+                                            if getattr(
+                                                content, "rb_local_deleted", False
+                                            ):
+                                                playlist_deleted_tracks += 1
+                                                continue
+
+                                            track = Track(
+                                                title=content.Title or "Unknown",
+                                                artist=(
+                                                    content.Artist.Name
+                                                    if content.Artist
+                                                    else "Unknown"
+                                                ),
+                                                file_path=(
+                                                    Path(content.FolderPath)
+                                                    if content.FolderPath
+                                                    else Path()
+                                                ),
+                                                playlist_path=rb_playlist.Name,
+                                            )
+                                            tracks.append(track)
+                                    except Exception as smart_parse_error:
+                                        self.logger.warning(
+                                            f"Failed to parse SmartList for '{rb_playlist.Name}': {smart_parse_error}"
+                                        )
+                                else:
+                                    self.logger.debug(
+                                        f"Executing SmartList query for '{rb_playlist.Name}'"
+                                    )
+                                    # Execute smart list query to get matching tracks
+                                    smart_tracks = rb_playlist.SmartList.execute(
+                                        self.db.session
+                                    )
+                                    self.logger.debug(
+                                        f"Smart playlist '{rb_playlist.Name}' returned {len(list(smart_tracks))} tracks"
+                                    )
+
+                                    # Need to re-execute since we consumed the iterator
+                                    smart_tracks = rb_playlist.SmartList.execute(
+                                        self.db.session
+                                    )
+                                    for content in smart_tracks:
+                                        # Skip deleted tracks
+                                        if getattr(content, "rb_local_deleted", False):
+                                            playlist_deleted_tracks += 1
+                                            continue
+
+                                        track = Track(
+                                            title=content.Title or "Unknown",
+                                            artist=(
+                                                content.Artist.Name
+                                                if content.Artist
+                                                else "Unknown"
+                                            ),
+                                            file_path=(
+                                                Path(content.FolderPath)
+                                                if content.FolderPath
+                                                else Path()
+                                            ),
+                                            playlist_path=rb_playlist.Name,
+                                        )
+                                        tracks.append(track)
+                            else:
+                                self.logger.debug(
+                                    f"Smart playlist '{rb_playlist.Name}' has no SmartList object"
+                                )
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Failed to execute smart playlist '{rb_playlist.Name}': {e}"
                             )
-                            tracks.append(track)
+                    else:
+                        # Handle regular playlists
+                        for song in rb_playlist.Songs:
+                            if hasattr(song, "Content") and song.Content:
+                                content = song.Content
+                                # Skip deleted tracks
+                                if getattr(content, "rb_local_deleted", False):
+                                    playlist_deleted_tracks += 1
+                                    continue
+
+                                track = Track(
+                                    title=content.Title or "Unknown",
+                                    artist=(
+                                        content.Artist.Name
+                                        if content.Artist
+                                        else "Unknown"
+                                    ),
+                                    file_path=(
+                                        Path(content.FolderPath)
+                                        if content.FolderPath
+                                        else Path()
+                                    ),
+                                    playlist_path=rb_playlist.Name,
+                                )
+                                tracks.append(track)
 
                 total_deleted_tracks += playlist_deleted_tracks
                 if playlist_deleted_tracks > 0:
@@ -266,25 +398,23 @@ class RekordboxExtractor:
 
             for playlist_id, playlist_data in playlists_by_id.items():
                 playlist = playlist_data["playlist"]
-                is_folder = playlist_data["is_folder"]
 
-                # Only include actual playlists (not folders) that have tracks
-                if not is_folder and playlist.tracks:
-                    path_components, _ = calculate_path_info(playlist_id)
+                # Include all playlists (folders and empty playlists too)
+                path_components, _ = calculate_path_info(playlist_id)
 
-                    # Update playlist name to unique sanitized version
-                    playlist.name = path_components[
-                        -1
-                    ]  # Last component is the playlist name
+                # Update playlist name to unique sanitized version
+                playlist.name = path_components[
+                    -1
+                ]  # Last component is the playlist name
 
-                    # Build the folder path (excluding the playlist name itself)
-                    if len(path_components) > 1:
-                        folder_path = "/".join(path_components[:-1])
-                        playlist.path = folder_path
-                    else:
-                        playlist.path = ""  # Root level playlist
+                # Build the folder path (excluding the playlist name itself)
+                if len(path_components) > 1:
+                    folder_path = "/".join(path_components[:-1])
+                    playlist.path = folder_path
+                else:
+                    playlist.path = ""  # Root level playlist
 
-                    result_playlists.append(playlist)
+                result_playlists.append(playlist)
 
             # Log deletion statistics
             if total_deleted_tracks > 0:

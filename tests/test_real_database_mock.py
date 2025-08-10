@@ -238,8 +238,8 @@ class TestRealisticDatabaseMocks:
 
         playlists = extractor.extract_playlists()
 
-        # Should extract only playlists with valid tracks
-        assert len(playlists) == 2
+        # Should extract all playlists (including empty ones with our new behavior)
+        assert len(playlists) == 4  # 2 with tracks + 2 empty playlists now included
 
         # Check Electronic Essentials playlist
         electronic = next(p for p in playlists if p.name == "Electronic Essentials")

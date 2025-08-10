@@ -1,11 +1,6 @@
 """Tests for deletion filtering functionality."""
 
-import os
-import sys
 from unittest.mock import Mock
-
-# Add the parent directory to the path so we can import the main module
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from rekordbox_to_jellyfin import RekordboxExtractor
 
@@ -30,6 +25,7 @@ class TestDeletionFiltering:
         normal_playlist.Name = "Normal Playlist"
         normal_playlist.ParentID = "root"
         normal_playlist.Attribute = 0
+        normal_playlist.configure_mock(is_smart_playlist=False)
         normal_playlist.Songs = []
 
         deleted_playlist = Mock()
@@ -38,6 +34,7 @@ class TestDeletionFiltering:
         deleted_playlist.Name = "Deleted Playlist"
         deleted_playlist.ParentID = "root"
         deleted_playlist.Attribute = 0
+        deleted_playlist.configure_mock(is_smart_playlist=False)
         deleted_playlist.Songs = []
 
         # Mock get_playlist to return both playlists
@@ -46,8 +43,10 @@ class TestDeletionFiltering:
         # Extract playlists
         result = self.extractor._extract_from_database()
 
-        # Should only get the normal playlist (but it has no tracks, so actually empty)
-        assert len(result) == 0  # No tracks means no playlists in output
+        # Should only get the normal playlist (even if empty - our new behavior includes empty playlists)
+        assert len(result) == 1  # Normal playlist included even without tracks
+        assert result[0].name == "Normal Playlist"
+        assert len(result[0].tracks) == 0  # No tracks in the playlist
 
     def test_filter_deleted_tracks_from_database(self):
         """Test that tracks marked with rb_local_deleted are filtered out."""
@@ -62,6 +61,7 @@ class TestDeletionFiltering:
         playlist.Name = "Test Playlist"
         playlist.ParentID = "root"
         playlist.Attribute = 0
+        playlist.configure_mock(is_smart_playlist=False)
 
         # Create mock songs - one normal, one deleted
         normal_song = Mock()
@@ -188,6 +188,7 @@ class TestDeletionFiltering:
         playlist.Name = "Test Playlist"
         playlist.ParentID = "root"
         playlist.Attribute = 0
+        playlist.configure_mock(is_smart_playlist=False)
 
         # Create mock song without rb_local_deleted attribute
         song = Mock()
