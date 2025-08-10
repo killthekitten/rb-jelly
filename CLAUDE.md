@@ -21,6 +21,11 @@ python rekordbox_to_jellyfin.py
 
 # Check logs
 tail -f rekordbox_to_jellyfin.log
+
+# Run tests (uses pytest)
+python -m pytest
+python -m pytest -v  # verbose output
+python -m pytest tests/test_collision_resolution.py -v  # specific test file
 ```
 
 ## Architecture
@@ -60,6 +65,28 @@ Uses dotenv (.env) for configuration with these critical variables:
 ## Security Considerations
 
 The script includes path traversal protection - any track path outside the `CRATES_ROOT` directory is rejected and logged. This prevents potential security issues when processing playlist data.
+
+## Collision Resolution and Filename Sanitization
+
+The system includes sophisticated collision resolution to handle sanitized filenames:
+
+- **UniqueNameResolver class** - Ensures sanitized filenames remain unique within their folder context
+- **Cross-platform sanitization** - Uses `pathvalidate` library for filesystem-safe names
+- **Hierarchical uniqueness** - Names only need to be unique within their parent folder
+- **Smart collision handling** - Adds numbered suffixes like "(1)", "(2)" when collisions occur
+- **Example**: "Plugin ears / Hovercat" and "Plugin ears  Hovercat" become unique sanitized names
+
+## Testing
+
+The project uses pytest for comprehensive testing:
+
+- **Core test files** in `/tests/` directory
+- **pytest.ini** configuration with test discovery patterns
+- **Collision resolution tests** - Extensive coverage of filename sanitization edge cases
+- **Integration tests** - Test playlist generation with collision scenarios
+- **Real-world scenario tests** - Based on actual user playlist names
+
+Run tests with: `python -m pytest -v`
 
 ## Error Handling
 
