@@ -49,15 +49,19 @@ class TestConfigFunctions:
                             'JELLYFIN_ROOT', 'SMB_SERVER', 'SMB_SHARE', 
                             'SMB_USERNAME', 'SMB_PASSWORD', 'LOG_LEVEL']
         
-        # Mock load_dotenv to prevent loading from .env files
+        # Mock load_dotenv to prevent loading from .env files in development
         with patch('cli.load_dotenv'), patch.dict(os.environ, {}, clear=True):
             config = load_config()
             
+            # Check defaults
             assert config['OUTPUT_DIR'] == './output'
             assert config['JELLYFIN_ROOT'] == '/data/music'
             assert config['LOG_LEVEL'] == 'INFO'
+            
+            # Check None values
             assert config['REKORDBOX_DB_PATH'] is None
             assert config['CRATES_ROOT'] is None
+            assert config['SMB_SERVER'] is None
     
     def test_validate_required_config_valid(self):
         """Test validation passes with valid configuration."""
@@ -384,6 +388,86 @@ LOG_LEVEL=INFO"""
                 # Test quiet flag  
                 result = self.runner.invoke(cli, ['--quiet', 'config-check'])
                 assert result.exit_code == 0
+            finally:
+                os.chdir(original_cwd)
+    
+    @patch('cli.RekordboxExtractor')
+    @patch('cli.PathConverter')
+    @patch('cli.PlaylistGenerator')
+    def test_create_playlists_flat_mode(self, mock_playlist_gen, mock_path_conv, mock_extractor):
+        """Test create-playlists command with --flat option."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_cwd = os.getcwd()
+            os.chdir(temp_dir)
+            try:
+                # Setup mocks
+                mock_extractor_instance = Mock()
+                mock_extractor_instance.connect.return_value = True
+                mock_extractor_instance.extract_playlists.return_value = self._create_mock_playlists()
+                mock_extractor.return_value = mock_extractor_instance
+                
+                mock_path_conv_instance = Mock()
+                mock_path_conv_instance.validate_and_convert_path.return_value = "/data/music/test.mp3"
+                mock_path_conv_instance.get_invalid_paths.return_value = set()
+                mock_path_conv.return_value = mock_path_conv_instance
+                
+                mock_playlist_gen_instance = Mock()
+                mock_playlist_gen_instance.create_playlist_structure.return_value = {"Test - Flat": "test-flat.m3u"}
+                mock_playlist_gen.return_value = mock_playlist_gen_instance
+                
+                # Create valid .env
+                self._create_valid_env()
+                
+                result = self.runner.invoke(cli, ['create-playlists', '--flat'])
+                
+                assert result.exit_code == 0
+                assert '📁 FLAT MODE - Playlists will be flattened for Jellyfin compatibility' in result.output
+                assert '📝 Creating playlist files...' in result.output
+                assert '🎉 Playlist creation completed!' in result.output
+                
+                # Verify PlaylistGenerator was called with flat_mode=True
+                mock_playlist_gen.assert_called_once_with('./output', flat_mode=True)
+                mock_playlist_gen_instance.create_playlist_structure.assert_called_once()
+            finally:
+                os.chdir(original_cwd)
+    
+    @patch('cli.RekordboxExtractor')
+    @patch('cli.PathConverter')
+    @patch('cli.PlaylistGenerator')
+    def test_full_migration_flat_mode(self, mock_playlist_gen, mock_path_conv, mock_extractor):
+        """Test full-migration command with --flat option."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_cwd = os.getcwd()
+            os.chdir(temp_dir)
+            try:
+                # Setup mocks
+                mock_extractor_instance = Mock()
+                mock_extractor_instance.connect.return_value = True
+                mock_extractor_instance.extract_playlists.return_value = self._create_mock_playlists()
+                mock_extractor.return_value = mock_extractor_instance
+                
+                mock_path_conv_instance = Mock()
+                mock_path_conv_instance.validate_and_convert_path.return_value = "/data/music/test.mp3"
+                mock_path_conv_instance.get_invalid_paths.return_value = set()
+                mock_path_conv.return_value = mock_path_conv_instance
+                
+                mock_playlist_gen_instance = Mock()
+                mock_playlist_gen_instance.create_playlist_structure.return_value = {"Test - Flat": "test-flat.m3u"}
+                mock_playlist_gen.return_value = mock_playlist_gen_instance
+                
+                # Create valid .env (include SMB to test full migration)
+                self._create_valid_env(include_smb=True)
+                
+                # Run with --skip-sync to avoid SMB complexity in this test
+                result = self.runner.invoke(cli, ['full-migration', '--flat', '--skip-sync'])
+                
+                assert result.exit_code == 0
+                assert '📁 FLAT MODE - Playlists will be flattened for Jellyfin compatibility' in result.output
+                assert '=== PHASE 1: Playlist Creation ===' in result.output
+                assert '🎉 Full migration completed!' in result.output
+                
+                # Verify PlaylistGenerator was called with flat_mode=True
+                mock_playlist_gen.assert_called_with('./output', flat_mode=True)
             finally:
                 os.chdir(original_cwd)
     

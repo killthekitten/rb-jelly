@@ -224,3 +224,209 @@ class TestPlaylistGenerator:
         
         # File should not exist
         assert not invalid_path.exists()
+    
+    def test_create_playlist_structure_flat_mode_with_nested_playlists(self, temp_dir, crates_root):
+        """Test that flat mode generates flattened playlist names with separator."""
+        output_dir = temp_dir / "playlists"
+        
+        # Create nested playlists with different path levels
+        tracks1 = [
+            Track(
+                title="Deep House Track",
+                artist="Artist 1",
+                file_path=Path(crates_root) / "Electronic" / "Deep" / "track1.mp3",
+                playlist_path="Electronic/Deep House"
+            )
+        ]
+        
+        tracks2 = [
+            Track(
+                title="Rock Track", 
+                artist="Artist 2",
+                file_path=Path(crates_root) / "Rock" / "track2.mp3",
+                playlist_path="Rock"
+            )
+        ]
+        
+        tracks3 = [
+            Track(
+                title="Root Track",
+                artist="Artist 3", 
+                file_path=Path(crates_root) / "track3.mp3",
+                playlist_path=""
+            )
+        ]
+        
+        playlists = [
+            Playlist(
+                name="Deep House",
+                path="Electronic",  # Nested under Electronic
+                tracks=tracks1,
+                children=[]
+            ),
+            Playlist(
+                name="Classic Rock",
+                path="Rock",  # Nested under Rock
+                tracks=tracks2,
+                children=[]
+            ),
+            Playlist(
+                name="Favorites",
+                path="",  # Root level
+                tracks=tracks3,
+                children=[]
+            )
+        ]
+        
+        # Test flat mode
+        generator = PlaylistGenerator(str(output_dir), flat_mode=True)
+        path_converter = PathConverter(crates_root, "/data/music")
+        
+        generator.clean_output_directory()
+        created_playlists = generator.create_playlist_structure(playlists, path_converter)
+        
+        # Check that all files are in root directory (no subdirectories)
+        assert len(list(output_dir.glob("*/"))) == 0  # No subdirectories
+        
+        # Check flattened playlist names
+        assert "Electronic - Deep House" in created_playlists
+        assert "Rock - Classic Rock" in created_playlists
+        assert "Favorites" in created_playlists  # Root level keeps same name
+        
+        # Check that M3U files exist with correct names
+        assert (output_dir / "Electronic - Deep House.m3u").exists()
+        assert (output_dir / "Rock - Classic Rock.m3u").exists()
+        assert (output_dir / "Favorites.m3u").exists()
+        
+        # Verify file content
+        content = (output_dir / "Electronic - Deep House.m3u").read_text(encoding='utf-8')
+        assert "Artist 1 - Deep House Track" in content
+        assert "/data/music/Electronic/Deep/track1.mp3" in content
+
+    def test_create_playlist_structure_nested_mode_vs_flat_mode(self, temp_dir, crates_root):
+        """Test that nested mode and flat mode produce different outputs for same playlists."""
+        output_dir_nested = temp_dir / "nested"
+        output_dir_flat = temp_dir / "flat"
+        
+        tracks = [
+            Track(
+                title="Test Track",
+                artist="Test Artist",
+                file_path=Path(crates_root) / "Genre" / "Subgenre" / "track.mp3",
+                playlist_path="Genre/Subgenre"
+            )
+        ]
+        
+        playlists = [
+            Playlist(
+                name="Test Playlist",
+                path="Genre/Subgenre",
+                tracks=tracks,
+                children=[]
+            )
+        ]
+        
+        path_converter = PathConverter(crates_root, "/data/music")
+        
+        # Test nested mode (default)
+        generator_nested = PlaylistGenerator(str(output_dir_nested), flat_mode=False)
+        generator_nested.clean_output_directory()
+        created_nested = generator_nested.create_playlist_structure(playlists, path_converter)
+        
+        # Test flat mode
+        generator_flat = PlaylistGenerator(str(output_dir_flat), flat_mode=True)
+        generator_flat.clean_output_directory()
+        created_flat = generator_flat.create_playlist_structure(playlists, path_converter)
+        
+        # Nested mode creates subdirectories
+        assert (output_dir_nested / "Genre" / "Subgenre").exists()
+        assert (output_dir_nested / "Genre" / "Subgenre" / "Test Playlist.m3u").exists()
+        assert "Genre/Subgenre/Test Playlist" in created_nested
+        
+        # Flat mode creates no subdirectories
+        assert len(list(output_dir_flat.glob("*/"))) == 0  # No subdirectories
+        assert (output_dir_flat / "Genre - Subgenre - Test Playlist.m3u").exists()
+        assert "Genre - Subgenre - Test Playlist" in created_flat
+        
+        # Both should have same track content
+        nested_content = (output_dir_nested / "Genre" / "Subgenre" / "Test Playlist.m3u").read_text()
+        flat_content = (output_dir_flat / "Genre - Subgenre - Test Playlist.m3u").read_text()
+        
+        assert nested_content == flat_content  # Same track content
+
+    def test_create_playlist_structure_flat_mode_multiple_playlists(self, temp_dir, crates_root):
+        """Test that flat mode correctly handles multiple playlists without conflicts."""
+        output_dir = temp_dir / "playlists"
+        
+        # Create multiple playlists with different paths and names
+        tracks1 = [
+            Track(
+                title="Electronic Track",
+                artist="Artist 1",
+                file_path=Path(crates_root) / "electronic.mp3",
+                playlist_path="Electronic"
+            )
+        ]
+        
+        tracks2 = [
+            Track(
+                title="Rock Track", 
+                artist="Artist 2",
+                file_path=Path(crates_root) / "rock.mp3",
+                playlist_path="Rock"
+            )
+        ]
+        
+        tracks3 = [
+            Track(
+                title="Jazz Track", 
+                artist="Artist 3",
+                file_path=Path(crates_root) / "jazz.mp3",
+                playlist_path=""  # Root level
+            )
+        ]
+        
+        playlists = [
+            Playlist(
+                name="House",
+                path="Electronic", 
+                tracks=tracks1,
+                children=[]
+            ),
+            Playlist(
+                name="Alternative",
+                path="Rock",
+                tracks=tracks2, 
+                children=[]
+            ),
+            Playlist(
+                name="Favorites",
+                path="",  # Root level
+                tracks=tracks3,
+                children=[]
+            )
+        ]
+        
+        generator = PlaylistGenerator(str(output_dir), flat_mode=True)
+        path_converter = PathConverter(crates_root, "/data/music")
+        
+        generator.clean_output_directory()
+        created_playlists = generator.create_playlist_structure(playlists, path_converter)
+        
+        # All playlists should be created
+        assert len(created_playlists) == 3
+        
+        # Check expected flat names
+        assert "Electronic - House" in created_playlists
+        assert "Rock - Alternative" in created_playlists  
+        assert "Favorites" in created_playlists  # Root level playlist
+        
+        # Check that all M3U files exist
+        m3u_files = list(output_dir.glob("*.m3u"))
+        assert len(m3u_files) == 3
+        
+        # Verify specific file names
+        file_names = [f.stem for f in m3u_files]
+        assert "Electronic - House" in file_names
+        assert "Rock - Alternative" in file_names
+        assert "Favorites" in file_names

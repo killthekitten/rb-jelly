@@ -113,8 +113,11 @@ def cli(ctx, verbose, quiet):
 @click.option(
     "--dry-run", is_flag=True, help="Show what would be done without creating files"
 )
+@click.option(
+    "--flat", is_flag=True, help="Generate flat playlist structure (Jellyfin compatible)"
+)
 @click.pass_context
-def create_playlists(ctx, output_dir, dry_run):
+def create_playlists(ctx, output_dir, dry_run, flat):
     """Create Jellyfin playlists from Rekordbox without syncing files."""
     config = load_config()
 
@@ -133,6 +136,14 @@ def create_playlists(ctx, output_dir, dry_run):
             )
         )
 
+    if flat:
+        click.echo(
+            click.style(
+                "📁 FLAT MODE - Playlists will be flattened for Jellyfin compatibility", 
+                fg="cyan", bold=True
+            )
+        )
+
     click.echo(click.style("🎵 Starting playlist creation", fg="green", bold=True))
 
     # Initialize components
@@ -142,7 +153,7 @@ def create_playlists(ctx, output_dir, dry_run):
     path_converter = PathConverter(config["CRATES_ROOT"], config["JELLYFIN_ROOT"])
 
     if not dry_run:
-        playlist_generator = PlaylistGenerator(config["OUTPUT_DIR"])
+        playlist_generator = PlaylistGenerator(config["OUTPUT_DIR"], flat_mode=flat)
 
     # Connect to Rekordbox
     click.echo(click.style("📀 Connecting to Rekordbox...", fg="blue"))
@@ -337,8 +348,11 @@ def sync_files(ctx, check_only):
     "--output-dir", "-o", help="Output directory for playlists (overrides .env)"
 )
 @click.option("--skip-sync", is_flag=True, help="Skip file synchronization")
+@click.option(
+    "--flat", is_flag=True, help="Generate flat playlist structure (Jellyfin compatible)"
+)
 @click.pass_context
-def full_migration(ctx, output_dir, skip_sync):
+def full_migration(ctx, output_dir, skip_sync, flat):
     """Run complete migration: create playlists and sync files."""
     config = load_config()
 
@@ -365,7 +379,7 @@ def full_migration(ctx, output_dir, skip_sync):
     click.echo(
         click.style("\n=== PHASE 1: Playlist Creation ===", fg="cyan", bold=True)
     )
-    ctx.invoke(create_playlists, output_dir=output_dir, dry_run=False)
+    ctx.invoke(create_playlists, output_dir=output_dir, dry_run=False, flat=flat)
 
     # Run file sync if configured and not skipped
     if not skip_sync:

@@ -338,8 +338,9 @@ class PathConverter:
 class PlaylistGenerator:
     """Generates M3U playlists and folder structure for Jellyfin."""
 
-    def __init__(self, output_dir: str):
+    def __init__(self, output_dir: str, flat_mode: bool = False):
         self.output_dir = Path(output_dir)
+        self.flat_mode = flat_mode
         self.logger = logging.getLogger(__name__)
 
     def clean_output_directory(self):
@@ -355,19 +356,39 @@ class PlaylistGenerator:
     ) -> Dict[str, str]:
         """Create nested folder structure and M3U files for playlists."""
         created_playlists = {}
+        
+        # Initialize collision resolver for flat mode
+        if self.flat_mode:
+            name_resolver = UniqueNameResolver()
 
         for playlist in playlists:
             # Determine the full path for the M3U file
-            if playlist.path:
-                # Nested playlist - create folder structure and put M3U inside
-                playlist_dir = self.output_dir / playlist.path
-                playlist_dir.mkdir(parents=True, exist_ok=True)
-                m3u_path = playlist_dir / f"{playlist.name}.m3u"
-                full_path = f"{playlist.path}/{playlist.name}"
+            if self.flat_mode:
+                # Flat mode - all M3U files go directly in output directory
+                if playlist.path:
+                    # Replace forward slashes with " - " separator before sanitization
+                    path_with_separators = playlist.path.replace("/", " - ")
+                    flat_name_raw = f"{path_with_separators} - {playlist.name}"
+                else:
+                    # Root level playlist
+                    flat_name_raw = playlist.name
+                
+                # Apply collision resolution and sanitization
+                flat_name = name_resolver.get_unique_name(flat_name_raw)
+                m3u_path = self.output_dir / f"{flat_name}.m3u"
+                full_path = flat_name
             else:
-                # Root level playlist - M3U goes directly in output directory
-                m3u_path = self.output_dir / f"{playlist.name}.m3u"
-                full_path = playlist.name
+                # Original nested mode
+                if playlist.path:
+                    # Nested playlist - create folder structure and put M3U inside
+                    playlist_dir = self.output_dir / playlist.path
+                    playlist_dir.mkdir(parents=True, exist_ok=True)
+                    m3u_path = playlist_dir / f"{playlist.name}.m3u"
+                    full_path = f"{playlist.path}/{playlist.name}"
+                else:
+                    # Root level playlist - M3U goes directly in output directory
+                    m3u_path = self.output_dir / f"{playlist.name}.m3u"
+                    full_path = playlist.name
 
             # Generate M3U playlist file
             valid_tracks = []
