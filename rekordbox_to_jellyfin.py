@@ -4,40 +4,19 @@ Rekordbox to Jellyfin Library Migration Script
 
 This script extracts playlist structure from Rekordbox, mirrors the folder/playlist
 hierarchy for Jellyfin, converts paths from Crates directory to /data/music,
-and syncs missing files to NAS via SMB.
+and syncs missing files to NAS.
 """
 
 import logging
-import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    print("Error: python-dotenv not installed. Run: pip install python-dotenv")
-    exit(1)
+from pyrekordbox import Rekordbox6Database, RekordboxXml
+from pyrekordbox.db6.smartlist import SmartList
 
-try:
-    from pyrekordbox import Rekordbox6Database, RekordboxXml
-    from pyrekordbox.db6.smartlist import SmartList
-except ImportError:
-    print("Error: pyrekordbox not installed. Run: pip install pyrekordbox")
-    exit(1)
-
-try:
-    import smbclient
-except ImportError:
-    print("Error: smbprotocol not installed. Run: pip install smbprotocol")
-    exit(1)
-
-try:
-    from pathvalidate import sanitize_filename
-except ImportError:
-    print("Error: pathvalidate not installed. Run: pip install pathvalidate")
-    exit(1)
+from pathvalidate import sanitize_filename
 
 
 class UniqueNameResolver:
@@ -618,94 +597,6 @@ class PlaylistGenerator:
             self.logger.error(f"Error writing M3U file {m3u_path}: {e}")
 
 
-class SMBSyncManager:
-    """Manages SMB connection and file synchronization with NAS."""
-
-    def __init__(self, smb_server: str, smb_share: str, username: str, password: str):
-        self.smb_server = smb_server
-        self.smb_share = smb_share
-        self.username = username
-        self.password = password
-        self.logger = logging.getLogger(__name__)
-
-    def connect(self) -> bool:
-        """Establish SMB connection to NAS."""
-        try:
-            smbclient.ClientConfig(username=self.username, password=self.password)
-            self.logger.info(f"SMB connection configured for {self.smb_server}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to configure SMB connection: {e}")
-            return False
-
-    def check_and_sync_files(
-        self, tracks: List[Track], path_converter: PathConverter
-    ) -> Tuple[int, int]:
-        """Check file existence on NAS and sync missing files."""
-        missing_files = []
-        synced_files = 0
-
-        for track in tracks:
-            jellyfin_path = path_converter.validate_and_convert_path(track.file_path)
-            if not jellyfin_path:
-                continue
-
-            # Convert jellyfin path to SMB path
-            smb_path = self._jellyfin_to_smb_path(jellyfin_path)
-
-            if not self._file_exists_on_nas(smb_path):
-                missing_files.append((track, smb_path))
-
-        self.logger.info(f"Found {len(missing_files)} missing files on NAS")
-
-        # Sync missing files
-        for track, smb_path in missing_files:
-            if self._sync_file_to_nas(track.file_path, smb_path):
-                synced_files += 1
-
-        return len(missing_files), synced_files
-
-    def _jellyfin_to_smb_path(self, jellyfin_path: str) -> str:
-        """Convert Jellyfin path to SMB path."""
-        # Remove /data/music prefix and prepend SMB share
-        relative_path = jellyfin_path.replace("/data/music/", "")
-        return f"//{self.smb_server}/{self.smb_share}/{relative_path}"
-
-    def _file_exists_on_nas(self, smb_path: str) -> bool:
-        """Check if file exists on NAS via SMB."""
-        try:
-            with smbclient.open_file(smb_path, mode="rb"):
-                return True
-        except Exception:
-            return False
-
-    def _sync_file_to_nas(self, local_path: Path, smb_path: str) -> bool:
-        """Copy local file to NAS via SMB."""
-        try:
-            # Ensure remote directory exists
-            remote_dir = "/".join(smb_path.split("/")[:-1])
-            self._ensure_remote_directory(remote_dir)
-
-            # Copy file
-            with open(local_path, "rb") as src:
-                with smbclient.open_file(smb_path, mode="wb") as dst:
-                    shutil.copyfileobj(src, dst)
-
-            self.logger.info(f"Synced file: {local_path} -> {smb_path}")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Failed to sync file {local_path}: {e}")
-            return False
-
-    def _ensure_remote_directory(self, remote_dir: str):
-        """Ensure remote directory exists on NAS."""
-        try:
-            smbclient.mkdir(remote_dir, exist_ok=True)
-        except Exception as e:
-            self.logger.debug(f"Directory creation failed (may already exist): {e}")
-
-
 def setup_logging(log_level: str = "INFO") -> None:
     """Configure logging for the application."""
     logging.basicConfig(
@@ -716,101 +607,3 @@ def setup_logging(log_level: str = "INFO") -> None:
             logging.StreamHandler(),
         ],
     )
-
-
-def main():
-    """Main orchestration function."""
-    # Load environment variables
-    load_dotenv()
-
-    # Configuration from environment variables
-    REKORDBOX_DB_PATH = os.getenv("REKORDBOX_DB_PATH")
-    REKORDBOX_XML_PATH = os.getenv("REKORDBOX_XML_PATH")
-    CRATES_ROOT = os.getenv("CRATES_ROOT")
-    OUTPUT_DIR = os.getenv("OUTPUT_DIR", "./output")
-    JELLYFIN_ROOT = os.getenv("JELLYFIN_ROOT", "/data/music")
-    SMB_SERVER = os.getenv("SMB_SERVER")
-    SMB_SHARE = os.getenv("SMB_SHARE")
-    SMB_USERNAME = os.getenv("SMB_USERNAME")
-    SMB_PASSWORD = os.getenv("SMB_PASSWORD")
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-    # Validate required configuration
-    if not CRATES_ROOT:
-        print("Error: CRATES_ROOT environment variable is required")
-        return 1
-
-    if not (REKORDBOX_DB_PATH or REKORDBOX_XML_PATH):
-        print("Error: Either REKORDBOX_DB_PATH or REKORDBOX_XML_PATH must be set")
-        return 1
-
-    if not all([SMB_SERVER, SMB_SHARE, SMB_USERNAME, SMB_PASSWORD]):
-        print("Warning: SMB configuration incomplete. File sync will be skipped.")
-
-    setup_logging(LOG_LEVEL)
-    logger = logging.getLogger(__name__)
-
-    logger.info("Starting Rekordbox to Jellyfin migration")
-
-    # Initialize components
-    extractor = RekordboxExtractor(REKORDBOX_DB_PATH, REKORDBOX_XML_PATH)
-    path_converter = PathConverter(CRATES_ROOT, JELLYFIN_ROOT)
-    playlist_generator = PlaylistGenerator(OUTPUT_DIR)
-
-    # Only initialize SMB manager if configuration is complete
-    smb_manager = None
-    if all([SMB_SERVER, SMB_SHARE, SMB_USERNAME, SMB_PASSWORD]):
-        smb_manager = SMBSyncManager(SMB_SERVER, SMB_SHARE, SMB_USERNAME, SMB_PASSWORD)
-
-    # Connect to Rekordbox
-    if not extractor.connect():
-        logger.error("Failed to connect to Rekordbox. Exiting.")
-        return 1
-
-    # Extract playlists
-    playlists = extractor.extract_playlists()
-    if not playlists:
-        logger.error("No playlists found. Exiting.")
-        return 1
-
-    # Clean output directory and generate playlist structure
-    playlist_generator.clean_output_directory()
-    created_playlists = playlist_generator.create_playlist_structure(
-        playlists, path_converter
-    )
-
-    # Log invalid paths
-    invalid_paths = path_converter.get_invalid_paths()
-    if invalid_paths:
-        logger.warning(f"Found {len(invalid_paths)} paths outside Crates directory")
-        for path in invalid_paths:
-            logger.warning(f"Invalid path: {path}")
-
-    # Connect to NAS and sync files
-    if smb_manager and smb_manager.connect():
-        all_tracks = []
-        for playlist in playlists:
-            all_tracks.extend(playlist.tracks)
-
-        missing_count, synced_count = smb_manager.check_and_sync_files(
-            all_tracks, path_converter
-        )
-        logger.info(
-            f"Sync completed: {synced_count}/{missing_count} missing files synced"
-        )
-    else:
-        if smb_manager:
-            logger.error(
-                "Failed to connect to NAS. Playlist files created but sync skipped."
-            )
-        else:
-            logger.info(
-                "SMB configuration not provided. Playlist files created but sync skipped."
-            )
-
-    logger.info(f"Migration completed. Created {len(created_playlists)} playlists")
-    return 0
-
-
-if __name__ == "__main__":
-    exit(main())

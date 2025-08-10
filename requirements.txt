@@ -1,8 +1,7 @@
 pyrekordbox>=0.4.0
-smbprotocol>=1.12.0
 python-dotenv>=1.0.0
 click>=8.0.0
-pathlib2>=2.3.0; python_version<'3.4'
+pathlib2>=2.3.0
 pytest>=7.0.0
 pytest-mock>=3.10.0
 pytest-click>=1.1.0

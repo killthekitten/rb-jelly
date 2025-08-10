@@ -3,7 +3,6 @@
 Convenient entry point for the Rekordbox to Jellyfin CLI tool.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -14,6 +13,7 @@ sys.path.insert(0, str(script_dir))
 # Import and run the CLI
 try:
     from cli import cli
+
     cli()
 except ImportError as e:
     print(f"Error: Unable to import CLI module: {e}")
