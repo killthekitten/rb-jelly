@@ -34,6 +34,50 @@ except ImportError:
     print("Error: smbprotocol not installed. Run: pip install smbprotocol")
     exit(1)
 
+try:
+    from pathvalidate import sanitize_filename
+except ImportError:
+    print("Error: pathvalidate not installed. Run: pip install pathvalidate")
+    exit(1)
+
+
+class UniqueNameResolver:
+    """Handles collision resolution for sanitized filenames."""
+    
+    def __init__(self):
+        self.name_mapping = {}  # original_name -> unique_sanitized_name
+        self.used_names = set()  # track all used sanitized names
+    
+    def get_unique_name(self, original_name: str) -> str:
+        """Get a unique sanitized filename, resolving collisions."""
+        # Return cached mapping if we've seen this name before
+        if original_name in self.name_mapping:
+            return self.name_mapping[original_name]
+        
+        # Start with basic sanitization
+        base_sanitized = sanitize_filename(original_name)
+        
+        # Handle empty results from sanitization
+        if not base_sanitized or base_sanitized.isspace():
+            base_sanitized = f"playlist_{hash(original_name) % 10000}"
+        
+        # If no collision, use it directly
+        if base_sanitized not in self.used_names:
+            self.name_mapping[original_name] = base_sanitized
+            self.used_names.add(base_sanitized)
+            return base_sanitized
+        
+        # Handle collision by finding a unique suffix
+        counter = 1
+        while True:
+            # Try appending counter: "name (2)", "name (3)", etc.
+            candidate = f"{base_sanitized} ({counter})"
+            if candidate not in self.used_names:
+                self.name_mapping[original_name] = candidate
+                self.used_names.add(candidate)
+                return candidate
+            counter += 1
+
 
 @dataclass
 class Track:
@@ -69,7 +113,6 @@ class RekordboxExtractor:
     def connect(self) -> bool:
         """Connect to Rekordbox database or XML file."""
         try:
-            print("Path:", self.db_path, Path(self.db_path))
             if self.db_path and Path(self.db_path).exists():
                 self.db = Rekordbox6Database(self.db_path)
                 self.logger.info(f"Connected to Rekordbox database: {self.db_path}")
@@ -103,45 +146,116 @@ class RekordboxExtractor:
             return []
 
     def _extract_from_database(self) -> List[Playlist]:
-        """Extract playlists from Rekordbox 6 database."""
-        playlists = []
-
+        """Extract playlists from Rekordbox 6 database with nested structure."""
         try:
-            rb_playlists = self.db.get_playlist()
-
+            rb_playlists = list(self.db.get_playlist())
+            
+            # Build hierarchy map and name resolvers
+            playlists_by_id = {}
+            name_resolvers = {}  # path -> UniqueNameResolver for that path level
+            
+            def get_name_resolver(path: str) -> UniqueNameResolver:
+                """Get or create a name resolver for a specific path level."""
+                if path not in name_resolvers:
+                    name_resolvers[path] = UniqueNameResolver()
+                return name_resolvers[path]
+            
+            # First pass: create all playlist objects with temporary names
             for rb_playlist in rb_playlists:
                 tracks = []
-
-                # Extract tracks from playlist
-                for song in rb_playlist.Songs:
-                    if hasattr(song, "Content") and song.Content:
-                        content = song.Content
-                        track = Track(
-                            title=content.Title or "Unknown",
-                            artist=content.Artist.Name if content.Artist else "Unknown",
-                            file_path=(
-                                Path(content.FolderPath) / content.Filename
-                                if content.FolderPath and content.Filename
-                                else Path()
-                            ),
-                            playlist_path=rb_playlist.Name,
-                        )
-                        tracks.append(track)
-
-                # Only include playlists with tracks
-                if tracks:
-                    playlist = Playlist(
-                        name=rb_playlist.Name,
-                        path=rb_playlist.Name,
-                        tracks=tracks,
-                        children=[],
-                    )
-                    playlists.append(playlist)
+                
+                # Extract tracks from playlist (only for actual playlists, not folders)
+                # Attribute 0 = actual playlist with tracks
+                # Attribute 1 or 4 = folders/containers
+                if hasattr(rb_playlist, 'Attribute') and rb_playlist.Attribute == 0:
+                    for song in rb_playlist.Songs:
+                        if hasattr(song, "Content") and song.Content:
+                            content = song.Content
+                            track = Track(
+                                title=content.Title or "Unknown",
+                                artist=content.Artist.Name if content.Artist else "Unknown",
+                                file_path=(
+                                    Path(content.FolderPath)
+                                    if content.FolderPath
+                                    else Path()
+                                ),
+                                playlist_path=rb_playlist.Name,
+                            )
+                            tracks.append(track)
+                
+                playlist = Playlist(
+                    name=rb_playlist.Name,  # Keep original name for now
+                    path="",  # Will be calculated later
+                    tracks=tracks,
+                    children=[],
+                )
+                
+                playlists_by_id[rb_playlist.ID] = {
+                    'playlist': playlist,
+                    'parent_id': rb_playlist.ParentID,
+                    'is_folder': rb_playlist.Attribute in (1, 4),
+                    'original_name': rb_playlist.Name,
+                    'rb_playlist': rb_playlist
+                }
+            
+            # Second pass: calculate paths with proper parent context
+            def calculate_path_info(playlist_id, visited=None):
+                if visited is None:
+                    visited = set()
+                if playlist_id in visited:
+                    return [], ""  # Circular reference protection
+                visited.add(playlist_id)
+                
+                if playlist_id not in playlists_by_id:
+                    return [], ""
+                
+                playlist_data = playlists_by_id[playlist_id]
+                parent_id = playlist_data['parent_id']
+                original_name = playlist_data['original_name']
+                
+                if parent_id == "root":
+                    # Root level - use root resolver
+                    resolver = get_name_resolver("root")
+                    unique_name = resolver.get_unique_name(original_name)
+                    return [unique_name], "root"
+                else:
+                    parent_path_components, parent_context = calculate_path_info(parent_id, visited.copy())
+                    parent_path = "/".join(parent_path_components)
+                    
+                    # Get resolver for this parent path
+                    resolver = get_name_resolver(parent_path)
+                    unique_name = resolver.get_unique_name(original_name)
+                    
+                    return parent_path_components + [unique_name], parent_path
+            
+            # Calculate unique names and paths for all playlists
+            result_playlists = []
+            
+            for playlist_id, playlist_data in playlists_by_id.items():
+                playlist = playlist_data['playlist']
+                is_folder = playlist_data['is_folder']
+                
+                # Only include actual playlists (not folders) that have tracks
+                if not is_folder and playlist.tracks:
+                    path_components, _ = calculate_path_info(playlist_id)
+                    
+                    # Update playlist name to unique sanitized version
+                    playlist.name = path_components[-1]  # Last component is the playlist name
+                    
+                    # Build the folder path (excluding the playlist name itself)
+                    if len(path_components) > 1:
+                        folder_path = "/".join(path_components[:-1])
+                        playlist.path = folder_path
+                    else:
+                        playlist.path = ""  # Root level playlist
+                    
+                    result_playlists.append(playlist)
+            
+            return result_playlists
 
         except Exception as e:
             self.logger.error(f"Error extracting from database: {e}")
-
-        return playlists
+            return []
 
     def _extract_from_xml(self) -> List[Playlist]:
         """Extract playlists from Rekordbox XML export."""
@@ -239,17 +353,24 @@ class PlaylistGenerator:
     def create_playlist_structure(
         self, playlists: List[Playlist], path_converter: PathConverter
     ) -> Dict[str, str]:
-        """Create folder structure and M3U files for playlists."""
+        """Create nested folder structure and M3U files for playlists."""
         created_playlists = {}
 
         for playlist in playlists:
-            playlist_dir = self.output_dir / playlist.name
-            playlist_dir.mkdir(parents=True, exist_ok=True)
+            # Determine the full path for the M3U file
+            if playlist.path:
+                # Nested playlist - create folder structure and put M3U inside
+                playlist_dir = self.output_dir / playlist.path
+                playlist_dir.mkdir(parents=True, exist_ok=True)
+                m3u_path = playlist_dir / f"{playlist.name}.m3u"
+                full_path = f"{playlist.path}/{playlist.name}"
+            else:
+                # Root level playlist - M3U goes directly in output directory
+                m3u_path = self.output_dir / f"{playlist.name}.m3u"
+                full_path = playlist.name
 
             # Generate M3U playlist file
-            m3u_path = playlist_dir / f"{playlist.name}.m3u"
             valid_tracks = []
-
             for track in playlist.tracks:
                 jellyfin_path = path_converter.validate_and_convert_path(
                     track.file_path
@@ -259,7 +380,7 @@ class PlaylistGenerator:
 
             if valid_tracks:
                 self._write_m3u_file(m3u_path, valid_tracks)
-                created_playlists[playlist.name] = str(m3u_path)
+                created_playlists[full_path] = str(m3u_path)
                 self.logger.info(
                     f"Created playlist: {m3u_path} with {len(valid_tracks)} tracks"
                 )
